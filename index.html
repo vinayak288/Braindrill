@@ -1,0 +1,4025 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ClueRush Live — Real-Time Multiplayer Party Game</title>
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Crisp Gaming Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=JetBrains+Mono:wght@600;800&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background-color: #020617;
+      color: #f1f5f9;
+      overflow-x: hidden;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .font-mono-game {
+      font-family: 'JetBrains Mono', ui-monospace, monospace;
+    }
+
+    /* Animated arcade background grid & floating shapes */
+    .bg-arcade-grid {
+      background-image:
+        linear-gradient(to right, rgba(129, 140, 248, 0.08) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(129, 140, 248, 0.08) 1px, transparent 1px);
+      background-size: 48px 48px;
+    }
+    @keyframes floatSlow {
+      0%, 100% { transform: translateY(0px) rotate(0deg); }
+      50% { transform: translateY(-18px) rotate(8deg); }
+    }
+    @keyframes floatUpFade {
+      0% { transform: translateY(0) scale(0.7); opacity: 0; }
+      15% { transform: translateY(-42px) scale(1.18); opacity: 1; }
+      100% { transform: translateY(-340px) scale(1.3); opacity: 0; }
+    }
+    @keyframes popIn {
+      0% { transform: scale(0.86); opacity: 0; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    @keyframes pulseCount {
+      0% { transform: scale(0.8); opacity: 1; }
+      70% { transform: scale(1.22); opacity: 0.9; }
+      100% { transform: scale(1.35); opacity: 0; }
+    }
+    .animate-float-slow {
+      animation: floatSlow 6s ease-in-out infinite;
+    }
+    .animate-float-emoji {
+      animation: floatUpFade 2.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    }
+    .animate-pop-in {
+      animation: popIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    .animate-count-pulse {
+      animation: pulseCount 0.95s ease-out infinite;
+    }
+
+    /* Custom subtle scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.4);
+      border-radius: 999px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(139, 92, 246, 0.45);
+      border-radius: 999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(6, 182, 212, 0.7);
+    }
+
+    /* Canvas responsive display */
+    #drawing-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+  </style>
+</head>
+<body class="min-h-screen selection:bg-cyan-400 selection:text-slate-950">
+
+  <!-- ==================== ANIMATED ARCADE BACKGROUND ==================== -->
+  <div class="fixed inset-0 -z-10 overflow-hidden bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 pointer-events-none">
+    <div class="absolute inset-0 bg-arcade-grid"></div>
+    <div class="absolute -top-24 -left-24 w-96 h-96 bg-violet-600/25 rounded-full blur-3xl animate-pulse"></div>
+    <div class="absolute top-1/3 -right-24 w-80 h-80 bg-cyan-500/20 rounded-full blur-3xl animate-pulse" style="animation-delay: 1.5s"></div>
+    <div class="absolute -bottom-24 left-1/3 w-96 h-96 bg-fuchsia-600/20 rounded-full blur-3xl animate-pulse" style="animation-delay: 3s"></div>
+    <div class="absolute top-20 left-[12%] w-6 h-6 border-2 border-cyan-400/30 rounded-md animate-float-slow"></div>
+    <div class="absolute top-44 right-[14%] w-5 h-5 border-2 border-amber-400/35 rounded-full animate-float-slow" style="animation-delay: 1.2s"></div>
+    <div class="absolute bottom-32 left-[16%] w-4 h-4 bg-violet-400/25 rotate-45 animate-pulse"></div>
+    <div class="absolute bottom-24 right-[18%] w-7 h-7 border-2 border-rose-400/30 rounded-lg animate-float-slow" style="animation-delay: 2.3s"></div>
+  </div>
+
+  <!-- Floating Real-Time Emoji Reactions Layer -->
+  <div id="reactions-layer" class="fixed inset-0 pointer-events-none z-50 overflow-hidden"></div>
+
+  <!-- Confetti Layer (Winner Screen) -->
+  <canvas id="confetti-canvas" class="fixed inset-0 pointer-events-none z-40 hidden"></canvas>
+
+  <!-- Toast Notification Banner -->
+  <div id="global-toast" class="fixed top-5 left-1/2 -translate-x-1/2 z-50 hidden px-5 py-3 rounded-2xl bg-slate-900/95 border border-cyan-400/50 text-white text-sm font-extrabold shadow-2xl backdrop-blur-md animate-pop-in"></div>
+
+  <!-- ==================== LOADING SCREEN ==================== -->
+  <section id="view-loading" class="min-h-screen flex flex-col items-center justify-center gap-4 px-4">
+    <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-400 via-violet-500 to-fuchsia-500 animate-spin shadow-lg shadow-violet-500/40"></div>
+    <div class="text-base font-extrabold text-slate-200 tracking-wide">Connecting to ClueRush Live...</div>
+  </section>
+
+  <!-- ==================== VIEW 1: HOME PAGE ==================== -->
+  <section id="view-home" class="hidden min-h-screen flex flex-col items-center justify-center px-4 py-8 sm:py-10">
+    <!-- Top Action Bar -->
+    <div class="w-full max-w-4xl flex flex-wrap items-center justify-between gap-2.5 mb-5">
+      <div id="sync-mode-badge" class="px-3 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-400/35 text-emerald-300 text-xs font-extrabold flex items-center gap-1.5">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span>Real-Time Cloud Sync Ready</span>
+      </div>
+      <div class="flex items-center gap-2">
+        <button data-open-help class="px-4 py-2 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-slate-100 text-xs sm:text-sm font-bold flex items-center gap-2 backdrop-blur-md transition active:scale-95">
+          <span>❓</span> How to Play
+        </button>
+        <button data-open-sound class="px-4 py-2 rounded-2xl bg-white/10 hover:bg-white/15 border border-white/15 text-slate-100 text-xs sm:text-sm font-bold flex items-center gap-2 backdrop-blur-md transition active:scale-95">
+          <span>🔊</span> Sound
+        </button>
+      </div>
+    </div>
+
+    <!-- Automatic Reconnection Banner -->
+    <div id="reconnect-banner" class="hidden w-full max-w-4xl mb-6 p-4 rounded-2xl bg-gradient-to-r from-emerald-500/20 via-cyan-500/20 to-violet-500/20 border border-emerald-400/40 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 shadow-xl">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-emerald-400/20 text-emerald-300 flex items-center justify-center text-xl">🔄</div>
+        <div>
+          <div class="text-sm font-black text-white">Active Game Detected!</div>
+          <div class="text-xs text-emerald-200">
+            You are still listed in room <span id="reconnect-code-label" class="font-mono-game font-extrabold"></span>.
+          </div>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button id="btn-reconnect-now" class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition">Reconnect Now</button>
+        <button id="btn-reconnect-dismiss" class="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 font-bold text-xs transition">✕</button>
+      </div>
+    </div>
+
+    <!-- Animated Logo & Header -->
+    <div class="text-center mb-8">
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-violet-500/20 border border-violet-400/40 text-violet-200 text-xs font-extrabold uppercase tracking-widest mb-4 shadow-lg">
+        <span>✨</span> Real-Time 2–8 Player Party Arena
+      </div>
+      <h1 class="text-5xl sm:text-7xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 via-violet-300 to-fuchsia-300 drop-shadow-[0_6px_28px_rgba(139,92,246,0.45)]">
+        ClueRush Live
+      </h1>
+      <p class="mt-3 text-slate-300 text-sm sm:text-base max-w-xl mx-auto">
+        Draw fast, drop clever number clues, race the 120-second clock, and climb the live podium with friends!
+      </p>
+    </div>
+
+    <!-- Home Error Banner -->
+    <div id="home-error" class="hidden w-full max-w-4xl mb-5 px-4 py-3 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-200 text-sm font-bold flex items-center gap-2">
+      <span>⚠️</span>
+      <span id="home-error-text"></span>
+    </div>
+
+    <!-- Two-Column Setup & Entry Cards -->
+    <div class="w-full max-w-4xl grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <!-- Left: Username & 12 Avatars -->
+      <div class="lg:col-span-7 p-6 rounded-3xl bg-slate-900/80 border border-white/15 backdrop-blur-xl shadow-2xl space-y-5">
+        <div>
+          <label for="input-username" class="block text-xs font-extrabold uppercase tracking-wider text-cyan-300 mb-2">
+            1. Your Player Name
+          </label>
+          <div class="flex items-center gap-3">
+            <div id="home-selected-avatar"></div>
+            <input
+              id="input-username"
+              type="text"
+              maxLength="18"
+              placeholder="Enter your nickname..."
+              class="flex-1 px-4 py-3.5 rounded-2xl bg-slate-950/75 border border-white/15 text-white font-bold placeholder-slate-500 focus:outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-500/25 transition"
+            />
+          </div>
+        </div>
+
+        <div>
+          <div class="text-xs font-extrabold uppercase tracking-wider text-violet-300 mb-2.5">
+            2. Pick Your Avatar (12 Characters)
+          </div>
+          <div id="avatar-grid" class="grid grid-cols-4 sm:grid-cols-6 gap-2.5"></div>
+        </div>
+      </div>
+
+      <!-- Right: Create & Join Room -->
+      <div class="lg:col-span-5 flex flex-col gap-5">
+        <div class="p-6 rounded-3xl bg-gradient-to-br from-violet-900/65 to-indigo-950/90 border border-violet-400/35 backdrop-blur-xl shadow-2xl flex flex-col justify-between flex-1">
+          <div>
+            <div class="w-12 h-12 rounded-2xl bg-violet-500/25 text-2xl flex items-center justify-center mb-3 shadow-inner">🎮</div>
+            <h2 class="text-xl font-black text-white">Host a New Party</h2>
+            <p class="text-xs text-slate-300 mt-1 leading-relaxed">
+              Create a private room, pick game modes, invite up to 8 friends with a room code, or add AI practice bots!
+            </p>
+          </div>
+          <button id="btn-create-room" class="mt-5 w-full py-3.5 rounded-2xl bg-gradient-to-r from-violet-500 via-fuchsia-500 to-pink-500 hover:from-violet-400 hover:to-pink-400 text-white font-black text-base shadow-lg shadow-violet-600/30 active:scale-[0.98] transition flex items-center justify-center gap-2">
+            <span>▶</span> Create Room
+          </button>
+        </div>
+
+        <form id="form-join-room" class="p-6 rounded-3xl bg-slate-900/85 border border-cyan-500/30 backdrop-blur-xl shadow-2xl space-y-3">
+          <div class="flex items-center gap-2">
+            <span class="text-xl">🔑</span>
+            <h2 class="text-lg font-black text-white">Join with Room Code</h2>
+          </div>
+          <div class="flex gap-2">
+            <input
+              id="input-join-code"
+              type="text"
+              maxLength="6"
+              placeholder="K7M9QP"
+              class="flex-1 min-w-0 px-3 py-3 rounded-2xl bg-slate-950/80 border border-white/15 text-center font-mono-game text-lg font-black tracking-widest text-cyan-300 placeholder-slate-600 focus:outline-none focus:border-cyan-400 uppercase"
+            />
+            <button id="btn-join-room" type="submit" class="px-5 py-3 rounded-2xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black transition shrink-0 active:scale-95">
+              Join
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== VIEW 2: MULTIPLAYER LOBBY ==================== -->
+  <section id="view-lobby" class="hidden min-h-screen max-w-7xl mx-auto px-4 py-5 flex flex-col gap-5">
+    <!-- Top Header -->
+    <div class="flex flex-wrap items-center justify-between gap-3 p-4 rounded-3xl bg-slate-900/80 border border-white/15 backdrop-blur-xl shadow-xl">
+      <div class="flex items-center gap-3">
+        <div class="text-xl sm:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-fuchsia-300">
+          ClueRush Live
+        </div>
+        <span id="lobby-count-badge" class="px-3 py-1 rounded-full bg-violet-500/20 border border-violet-400/30 text-violet-200 text-xs font-extrabold">
+          LOBBY • 1/8
+        </span>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button data-open-help class="p-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 transition" title="How to Play">❓</button>
+        <button data-open-sound class="p-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 transition" title="Sound Settings">🔊</button>
+        <button data-leave-room class="px-4 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/35 text-rose-200 text-xs font-extrabold transition">
+          Leave Room
+        </button>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+      <!-- Left/Center: Code, 8 Slots, Settings -->
+      <div class="lg:col-span-8 flex flex-col gap-5">
+        <!-- Room Code Banner -->
+        <div class="p-5 rounded-3xl bg-gradient-to-r from-indigo-900/75 via-violet-900/65 to-slate-900/85 border border-violet-400/35 shadow-2xl flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <div class="text-xs font-extrabold uppercase tracking-wider text-cyan-300">Share Room Code With Friends</div>
+            <div class="flex items-center gap-3 mt-1">
+              <span id="lobby-room-code" class="text-3xl sm:text-4xl font-mono-game font-black tracking-[0.2em] text-white">------</span>
+              <button id="btn-copy-code" class="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs shadow-lg transition active:scale-95">
+                📋 Copy Code
+              </button>
+            </div>
+          </div>
+
+          <div class="flex flex-col items-start sm:items-end gap-2">
+            <div id="lobby-status-pill" class="px-3.5 py-2 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-200 text-xs font-bold">
+              ⏳ Waiting for at least 2 players to start...
+            </div>
+            <button id="btn-add-bot" class="hidden px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-cyan-200 text-xs font-bold transition active:scale-95">
+              🤖 + Add Practice Bot
+            </button>
+          </div>
+        </div>
+
+        <!-- 8 Player Slots -->
+        <div class="p-5 rounded-3xl bg-slate-900/80 border border-white/15 backdrop-blur-xl shadow-xl">
+          <div class="flex items-center justify-between mb-3.5">
+            <h3 id="lobby-players-heading" class="font-black text-white">👥 Players (1/8)</h3>
+            <span class="text-xs text-slate-400">Up to 8 players per room</span>
+          </div>
+          <div id="lobby-players-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+        </div>
+
+        <!-- Host Game Settings -->
+        <div class="p-5 rounded-3xl bg-slate-900/80 border border-white/15 backdrop-blur-xl shadow-xl space-y-4">
+          <div class="flex items-center justify-between">
+            <h3 class="font-black text-white">⚙️ Game Settings</h3>
+            <span id="lobby-host-only-note" class="hidden text-xs text-slate-400 font-semibold">Only Host can edit settings</span>
+          </div>
+
+          <!-- Game Mode Buttons -->
+          <div>
+            <div class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Game Mode</div>
+            <div id="settings-mode-grid" class="grid grid-cols-2 sm:grid-cols-4 gap-2"></div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <!-- Difficulty -->
+            <div>
+              <div class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Difficulty</div>
+              <div id="settings-diff-grid" class="flex gap-1.5"></div>
+            </div>
+
+            <!-- Round Count (3–16) -->
+            <div>
+              <div class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Total Rounds (3–16)</div>
+              <div class="flex items-center gap-2">
+                <button id="btn-rounds-dec" class="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 font-black text-sm transition">−</button>
+                <div id="settings-rounds-val" class="flex-1 py-2 rounded-xl bg-slate-950/70 border border-white/15 text-center font-mono-game font-black text-amber-300 text-sm">5</div>
+                <button id="btn-rounds-inc" class="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 font-black text-sm transition">+</button>
+              </div>
+            </div>
+
+            <!-- Custom Number Range -->
+            <div>
+              <div class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Mode A Number Range</div>
+              <div class="flex items-center gap-2">
+                <input id="input-range-min" type="number" min="1" max="998" value="1" class="w-full px-2 py-2 rounded-xl bg-slate-950/70 border border-white/15 text-xs font-bold text-white text-center" />
+                <span class="text-slate-400 text-xs font-bold">to</span>
+                <input id="input-range-max" type="number" min="10" max="999" value="100" class="w-full px-2 py-2 rounded-xl bg-slate-950/70 border border-white/15 text-xs font-bold text-white text-center" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Chat Restriction + Start Game -->
+          <div class="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/10">
+            <button id="btn-toggle-restrict-chat" type="button" class="flex items-center gap-2.5 text-xs font-bold text-slate-200">
+              <span id="restrict-chat-track" class="w-10 h-5 rounded-full p-0.5 bg-slate-700 transition inline-flex items-center">
+                <span id="restrict-chat-thumb" class="w-4 h-4 rounded-full bg-white transition transform translate-x-0"></span>
+              </span>
+              <span>Restrict non-guess chat during active rounds</span>
+            </button>
+
+            <button id="btn-start-game" class="hidden w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 via-cyan-500 to-blue-500 hover:from-emerald-400 hover:to-blue-400 disabled:opacity-40 text-slate-950 font-black text-base shadow-xl shadow-cyan-500/25 transition active:scale-95">
+              ▶ Start Game
+            </button>
+            <div id="lobby-wait-host-msg" class="hidden text-xs font-bold text-cyan-300 px-4 py-2 rounded-xl bg-cyan-500/10 border border-cyan-500/25">
+              Waiting for Host to start the game...
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Lobby Chat & Full User ID -->
+      <div class="lg:col-span-4 flex flex-col gap-4">
+        <div class="flex flex-col h-[380px] lg:h-[520px] rounded-3xl bg-slate-900/90 border border-white/15 shadow-2xl overflow-hidden">
+          <div class="px-4 py-3 bg-white/5 border-b border-white/10 font-extrabold text-sm text-white flex items-center justify-between">
+            <span>💬 Lobby Chat</span>
+            <span class="text-[11px] text-cyan-300 font-bold">Live</span>
+          </div>
+          <div id="lobby-chat-list" class="flex-1 overflow-y-auto p-3 space-y-2"></div>
+          <div id="lobby-emoji-bar" class="px-3 py-2 bg-slate-950/60 border-t border-white/10 flex items-center justify-between gap-1"></div>
+          <form id="form-lobby-chat" class="p-2.5 bg-slate-950/80 border-t border-white/10 flex gap-2">
+            <input id="input-lobby-chat" type="text" maxLength="80" placeholder="Say hello to the room..." class="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl bg-slate-900 border border-white/15 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400" />
+            <button type="submit" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 hover:from-cyan-400 hover:to-violet-500 text-white font-bold text-sm transition">➤</button>
+          </form>
+        </div>
+
+        <div class="p-3 rounded-2xl bg-slate-900/70 border border-white/10 text-[11px] text-slate-400 break-all">
+          <span class="font-bold text-slate-300">Your Player ID: </span>
+          <span id="lobby-user-id" class="font-mono-game text-cyan-300"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== VIEW 3: ACTIVE GAME ARENA ==================== -->
+  <section id="view-game" class="hidden min-h-screen max-w-[1440px] mx-auto px-3 sm:px-5 py-3 sm:py-4 flex flex-col gap-3.5">
+    <!-- Top Game HUD -->
+    <div class="p-3 sm:p-4 rounded-3xl bg-slate-900/85 border border-white/15 backdrop-blur-xl shadow-xl flex flex-wrap items-center justify-between gap-3">
+      <div class="flex flex-wrap items-center gap-2">
+        <span id="hud-round-badge" class="px-3 py-1.5 rounded-xl bg-violet-600/30 border border-violet-400/40 text-violet-100 text-xs font-black">
+          Round 1 / 5
+        </span>
+        <span id="hud-mode-badge" class="px-3 py-1.5 rounded-xl border text-xs font-extrabold">
+          Mode
+        </span>
+        <div class="flex items-center gap-2 px-3 py-1 rounded-xl bg-white/5 border border-white/10">
+          <span id="hud-hg-avatar"></span>
+          <span class="text-xs font-bold text-slate-200">
+            Hint Giver: <strong id="hud-hg-name" class="text-amber-300">Player</strong>
+          </span>
+        </div>
+      </div>
+
+      <!-- Synced Timer + Quick Buttons -->
+      <div class="flex items-center gap-2.5">
+        <div id="hud-timer-box" class="px-4 py-1.5 rounded-2xl bg-slate-950/90 border border-white/15 flex items-center gap-2 font-mono-game text-xl sm:text-2xl font-black text-emerald-300 shadow-inner">
+          <span>⏱</span>
+          <span id="hud-timer-text">2:00</span>
+        </div>
+        <button data-open-history class="p-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 transition" title="Round History">📜</button>
+        <button data-open-sound class="p-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 transition" title="Sound Settings">🔊</button>
+        <button data-leave-room class="p-2.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 transition" title="Leave Room">🚪</button>
+      </div>
+
+      <!-- Animated Progress Bar -->
+      <div class="w-full h-2 rounded-full bg-slate-950 overflow-hidden border border-white/10">
+        <div id="hud-timer-bar" class="h-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all duration-300" style="width: 100%"></div>
+      </div>
+    </div>
+
+    <!-- Timer Warning Banner (30s / 10s) -->
+    <div id="timer-warning-banner" class="hidden px-4 py-2 rounded-2xl text-center text-xs font-black uppercase tracking-widest border"></div>
+
+    <!-- Dramatic Final 5-Second Floating Pulse -->
+    <div id="final-five-overlay" class="hidden fixed top-24 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
+      <div id="final-five-num" class="w-20 h-20 rounded-full bg-rose-600/90 border-4 border-rose-200 shadow-[0_0_40px_rgba(244,63,94,0.9)] flex items-center justify-center text-4xl font-black text-white animate-count-pulse">5</div>
+    </div>
+
+    <!-- Main 2-Column Arena -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1">
+      <!-- Left/Center Stage -->
+      <div class="lg:col-span-8 flex flex-col gap-4">
+
+        <!-- SUB-PHASE A: CHOOSING / TURN SETUP -->
+        <div id="stage-choosing" class="hidden p-6 sm:p-8 rounded-3xl bg-slate-900/90 border border-violet-500/35 shadow-2xl flex-1 flex flex-col justify-center">
+          <!-- Hint Giver Setup Panel -->
+          <div id="choosing-hg-panel" class="hidden max-w-xl mx-auto w-full space-y-5">
+            <div class="text-center">
+              <span class="inline-block px-3 py-1 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/40 text-xs font-black uppercase tracking-wider mb-2">
+                Your Turn as Hint Giver! (<span id="choosing-sec-left">25</span>s)
+              </span>
+              <h2 id="choosing-title" class="text-2xl sm:text-3xl font-black text-white">Choose Your Secret</h2>
+            </div>
+
+            <div id="choosing-error" class="hidden p-3 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-200 text-xs font-bold text-center"></div>
+
+            <!-- Mode A Setup Form -->
+            <form id="form-setup-modeA" class="hidden space-y-4">
+              <div>
+                <label id="setup-modeA-range-label" class="block text-xs font-bold text-slate-300 mb-1.5">Secret Number (1 – 100)</label>
+                <div class="flex gap-2">
+                  <input id="input-setup-num" type="number" placeholder="Enter number" class="flex-1 px-4 py-3 rounded-2xl bg-slate-950 border border-white/15 text-xl font-mono-game font-black text-cyan-300 focus:outline-none focus:border-cyan-400" />
+                  <button id="btn-setup-num-rand" type="button" class="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-xs font-extrabold text-white transition">🎲 Random</button>
+                </div>
+              </div>
+              <div>
+                <div class="text-xs font-bold text-slate-300 mb-1.5">Step 1 Clue: Number of Digits</div>
+                <div id="setup-digits-group" class="grid grid-cols-3 gap-2"></div>
+              </div>
+              <button type="submit" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-cyan-500 to-violet-600 hover:from-cyan-400 hover:to-violet-500 text-white font-black text-base shadow-xl transition">
+                Lock In & Start Round
+              </button>
+            </form>
+
+            <!-- Mode B Setup Form -->
+            <form id="form-setup-modeB" class="hidden space-y-4">
+              <div>
+                <div class="text-xs font-bold text-slate-300 mb-2">Category Hint</div>
+                <div id="setup-cat-group" class="flex flex-wrap gap-2"></div>
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-300 mb-1.5">Your Secret Word</label>
+                <div class="flex gap-2">
+                  <input id="input-setup-word" type="text" maxLength="18" placeholder="Type a word to draw..." class="flex-1 px-4 py-3 rounded-2xl bg-slate-950 border border-white/15 text-lg font-bold text-amber-200 focus:outline-none focus:border-amber-400" />
+                  <button id="btn-setup-word-rand" type="button" class="px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/20 text-xs font-extrabold text-white transition">🎲 Random</button>
+                </div>
+              </div>
+              <button type="submit" class="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-black text-base shadow-xl transition">
+                Start Drawing!
+              </button>
+            </form>
+
+            <!-- Mode C Setup Choices -->
+            <div id="setup-modeC-choices" class="hidden grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2"></div>
+          </div>
+
+          <!-- Guesser Waiting Panel -->
+          <div id="choosing-wait-panel" class="hidden text-center py-10 space-y-4">
+            <div id="choosing-wait-avatar" class="flex justify-center"></div>
+            <h2 class="text-2xl font-black text-white">
+              Waiting for <span id="choosing-wait-name" class="text-amber-300">Player</span> to prepare their clue...
+            </h2>
+            <p class="text-sm text-slate-400 max-w-md mx-auto">
+              Get ready! This round is <strong id="choosing-wait-mode" class="text-cyan-300"></strong>. Faster guesses earn up to <strong class="text-emerald-300">115+ points</strong>!
+            </p>
+          </div>
+        </div>
+
+        <!-- SUB-PHASE B1: PLAYING MODE A (NUMBER GUESSING) -->
+        <div id="stage-playing-number" class="hidden flex flex-col gap-4 w-full">
+          <!-- Top Number Info & Published Clues -->
+          <div class="p-5 rounded-3xl bg-gradient-to-br from-cyan-950/80 via-slate-900/90 to-indigo-950/80 border border-cyan-500/30 shadow-2xl">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+              <div>
+                <span class="text-xs font-extrabold uppercase tracking-wider text-cyan-400">Mode A • Number Guessing</span>
+                <h3 id="num-range-heading" class="text-xl sm:text-2xl font-black text-white mt-0.5">Range: 1 – 100</h3>
+              </div>
+              <div class="flex flex-wrap items-center gap-2">
+                <div id="num-digits-badge" class="px-4 py-2 rounded-2xl bg-cyan-500/20 border border-cyan-400/40 text-cyan-200 font-black text-sm">
+                  🎯 2 Digits
+                </div>
+                <div id="num-secret-pill" class="hidden px-4 py-2 rounded-2xl bg-amber-500/20 border border-amber-400/40 text-amber-200 font-black text-sm flex items-center gap-2">
+                  <span>Secret: <strong id="num-secret-value">42</strong></span>
+                  <button id="btn-toggle-secret-eye" type="button" class="text-amber-300 hover:text-white" title="Hide/Show Secret">👁</button>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">💡 Live Published Clues</div>
+              <div id="num-clues-list" class="flex flex-wrap gap-2"></div>
+            </div>
+          </div>
+
+          <!-- Hint Giver Clue Builder -->
+          <div id="num-clue-builder" class="hidden p-5 rounded-3xl bg-slate-900/90 border border-white/15 shadow-xl space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <h4 class="font-black text-white">⚡ Clue Builder Panel</h4>
+              <button id="btn-toggle-highlow" type="button" class="px-3 py-1.5 rounded-xl text-xs font-bold border bg-emerald-500/20 text-emerald-300 border-emerald-500/40 transition">
+                High/Low Arrows: ON
+              </button>
+            </div>
+            <div id="num-clue-error" class="hidden px-3 py-2 rounded-xl bg-rose-500/20 border border-rose-500/40 text-rose-200 text-xs font-bold"></div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button id="btn-clue-parity" type="button" class="p-3 rounded-2xl bg-violet-600/25 hover:bg-violet-600/40 border border-violet-400/40 text-violet-100 font-bold text-sm transition">
+                ✨ Publish Even / Odd
+              </button>
+              <div class="flex gap-2">
+                <input id="input-clue-gt" type="number" placeholder="Greater than X" class="w-full px-3 py-2 rounded-xl bg-slate-950/70 border border-white/15 text-sm text-white focus:outline-none focus:border-cyan-400" />
+                <button id="btn-clue-gt" type="button" class="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold text-xs shrink-0 transition">+ &gt; X</button>
+              </div>
+              <div class="flex gap-2">
+                <input id="input-clue-lt" type="number" placeholder="Less than X" class="w-full px-3 py-2 rounded-xl bg-slate-950/70 border border-white/15 text-sm text-white focus:outline-none focus:border-cyan-400" />
+                <button id="btn-clue-lt" type="button" class="px-3.5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold text-xs shrink-0 transition">+ &lt; X</button>
+              </div>
+              <div class="flex gap-1.5">
+                <input id="input-clue-rmin" type="number" placeholder="Min" class="w-1/2 px-2.5 py-2 rounded-xl bg-slate-950/70 border border-white/15 text-sm text-white focus:outline-none focus:border-amber-400" />
+                <input id="input-clue-rmax" type="number" placeholder="Max" class="w-1/2 px-2.5 py-2 rounded-xl bg-slate-950/70 border border-white/15 text-sm text-white focus:outline-none focus:border-amber-400" />
+                <button id="btn-clue-range" type="button" class="px-3 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-extrabold text-xs shrink-0 transition">Range</button>
+              </div>
+            </div>
+
+            <form id="form-clue-custom" class="flex gap-2">
+              <input id="input-clue-custom" type="text" maxLength="60" placeholder="Custom clue (e.g. 'Multiple of 5' or 'Lucky age')..." class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950/70 border border-white/15 text-sm text-white focus:outline-none focus:border-violet-400" />
+              <button type="submit" class="px-4 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-xs shrink-0 transition">Send Clue</button>
+            </form>
+          </div>
+
+          <!-- Guesser Recent Number Tracker -->
+          <div id="num-guess-tracker" class="hidden p-5 rounded-3xl bg-slate-900/80 border border-white/15 shadow-xl">
+            <h4 class="font-black text-white text-sm mb-3">🎯 Live Number Guesses Tracker</h4>
+            <div id="num-guess-chips" class="flex flex-wrap gap-2"></div>
+          </div>
+        </div>
+
+        <!-- SUB-PHASE B2: PLAYING MODE B & C (LIVE DRAWING BOARD) -->
+        <div id="stage-playing-draw" class="hidden flex flex-col gap-3 w-full">
+          <!-- Canvas Top Info Banner -->
+          <div class="p-3.5 sm:p-4 rounded-2xl bg-slate-900/90 border border-white/15 flex flex-wrap items-center justify-between gap-3 shadow-lg">
+            <div class="flex flex-wrap items-center gap-2">
+              <span id="draw-category-badge" class="px-3 py-1 rounded-xl bg-violet-500/20 border border-violet-400/40 text-violet-200 text-xs font-extrabold">
+                Category: Animals
+              </span>
+              <span id="draw-bonus-badge" class="hidden px-2.5 py-1 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-300 text-xs font-extrabold">
+                +15 Bonus
+              </span>
+            </div>
+
+            <!-- Hint Giver Word Prompt -->
+            <div id="draw-hg-banner" class="hidden flex flex-wrap items-center gap-2.5">
+              <div class="text-sm font-bold text-slate-300">
+                Draw: <span id="draw-secret-word" class="text-lg font-black text-amber-300 tracking-wide"></span>
+              </div>
+              <span class="text-[11px] px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-200 border border-rose-500/35 font-bold">
+                🚫 No writing letters!
+              </span>
+              <button id="btn-hg-reveal-letter" type="button" class="px-3 py-1.5 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/40 text-amber-200 text-xs font-extrabold transition">
+                💡 Reveal 1st Letter (-15 pts)
+              </button>
+            </div>
+
+            <!-- Guesser Masked Underscores -->
+            <div id="draw-guesser-banner" class="hidden flex flex-wrap items-center gap-2.5">
+              <div id="draw-masked-tiles" class="flex flex-wrap items-center gap-1.5"></div>
+              <button id="btn-guesser-reveal-letter" type="button" class="hidden px-3 py-1.5 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/40 text-amber-200 text-xs font-extrabold transition">
+                💡 1st Letter Hint (-15 pts)
+              </button>
+            </div>
+          </div>
+
+          <!-- Responsive HTML5 Canvas Container -->
+          <div id="canvas-container" class="relative w-full h-[290px] sm:h-[370px] lg:h-[420px] rounded-2xl overflow-hidden border-2 border-white/15 shadow-2xl bg-slate-900 select-none">
+            <canvas id="drawing-canvas"></canvas>
+            <div id="canvas-live-pill" class="hidden absolute top-3 left-3 px-3 py-1 rounded-full bg-slate-950/75 border border-white/10 text-[11px] font-bold text-cyan-300 flex items-center gap-1.5 backdrop-blur-md pointer-events-none">
+              <span class="w-2 h-2 rounded-full bg-cyan-400 animate-ping"></span>
+              Live Drawing
+            </div>
+          </div>
+
+          <!-- Drawing Toolbar (STRICTLY ONLY VISIBLE TO HINT GIVER) -->
+          <div id="draw-toolbar" class="hidden p-3 rounded-2xl bg-slate-900/90 border border-white/15 flex flex-wrap items-center justify-between gap-3 shadow-xl">
+            <div class="flex items-center gap-1.5">
+              <button id="tool-pencil" type="button" class="px-3 py-2 rounded-xl font-bold text-xs bg-violet-600 text-white shadow-lg transition">✏️ Pencil</button>
+              <button id="tool-eraser" type="button" class="px-3 py-2 rounded-xl font-bold text-xs bg-white/5 text-slate-300 hover:bg-white/10 transition">🧽 Eraser</button>
+            </div>
+            <div id="draw-colors-bar" class="flex flex-wrap items-center gap-1.5"></div>
+            <div class="flex items-center gap-1.5 ml-auto">
+              <div id="draw-sizes-bar" class="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10"></div>
+              <button id="btn-canvas-undo" type="button" title="Undo" class="px-2.5 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-bold transition">↩ Undo</button>
+              <button id="btn-canvas-clear" type="button" title="Clear Canvas" class="px-2.5 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30 text-xs font-bold transition">🗑 Clear</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- SUB-PHASE C: ROUND END SUMMARY -->
+        <div id="stage-round-end" class="hidden p-6 rounded-3xl bg-gradient-to-br from-slate-900/95 via-indigo-950/90 to-slate-900/95 border border-emerald-400/40 shadow-2xl space-y-5">
+          <div class="text-center space-y-2">
+            <span id="round-end-reason" class="inline-block px-3.5 py-1 rounded-full bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-xs font-black uppercase tracking-wider">
+              ⏰ Time Over!
+            </span>
+            <div class="text-sm text-slate-400 font-semibold">The secret answer was</div>
+            <div id="round-end-answer" class="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-emerald-300 to-cyan-300">
+              ---
+            </div>
+          </div>
+
+          <div class="space-y-2 max-w-xl mx-auto">
+            <div id="round-end-heading" class="text-xs font-extrabold uppercase tracking-wider text-slate-400">Round Points Breakdown</div>
+            <div id="round-end-list" class="space-y-2"></div>
+          </div>
+
+          <div class="flex flex-col items-center gap-2 pt-2">
+            <button id="btn-advance-round" class="hidden px-8 py-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-violet-600 hover:from-cyan-400 hover:to-violet-500 text-white font-black shadow-xl transition active:scale-95">
+              Next Round
+            </button>
+            <div id="round-end-wait-msg" class="hidden text-xs font-bold text-cyan-300">
+              Next round starting automatically...
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Scoreboard Strip -->
+        <div class="p-3.5 rounded-3xl bg-slate-900/80 border border-white/15 shadow-xl">
+          <div id="game-scoreboard-strip" class="flex items-center gap-2 overflow-x-auto pb-1"></div>
+        </div>
+      </div>
+
+      <!-- Right Sidebar: Live Guesses, Chat & Reactions -->
+      <div class="lg:col-span-4">
+        <div class="flex flex-col h-[370px] lg:h-[545px] rounded-3xl bg-slate-900/90 border border-white/15 shadow-2xl overflow-hidden">
+          <div class="px-4 py-3 bg-white/5 border-b border-white/10 flex items-center justify-between">
+            <span class="font-extrabold text-sm text-white">💬 Live Guesses & Chat</span>
+            <span id="chat-lock-badge" class="hidden text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              🔒 Guess Only
+            </span>
+          </div>
+
+          <!-- Private "So Close!" Feedback Banner -->
+          <div id="close-guess-toast" class="hidden mx-3 mt-2 px-3 py-1.5 rounded-xl bg-amber-500/25 border border-amber-400/50 text-amber-200 text-xs font-extrabold text-center animate-bounce"></div>
+
+          <div id="game-chat-list" class="flex-1 overflow-y-auto p-3 space-y-2"></div>
+          <div id="game-emoji-bar" class="px-3 py-2 bg-slate-950/60 border-t border-white/10 flex items-center justify-between gap-1"></div>
+
+          <form id="form-game-chat" class="p-2.5 bg-slate-950/80 border-t border-white/10 flex gap-2">
+            <input id="input-game-chat" type="text" maxLength="80" placeholder="Type your guess..." class="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl bg-slate-900 border border-cyan-500/50 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400 disabled:opacity-40" />
+            <button id="btn-game-chat-send" type="submit" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-600 hover:from-cyan-400 hover:to-violet-500 disabled:opacity-40 text-white font-bold text-sm transition">➤</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== VIEW 4: WINNER CELEBRATION SCREEN ==================== -->
+  <section id="view-winner" class="hidden min-h-screen max-w-5xl mx-auto px-4 py-8 flex flex-col gap-6 relative z-10">
+    <div class="text-center space-y-2">
+      <div class="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-400/20 border border-amber-400/40 text-amber-200 text-xs font-black uppercase tracking-widest">
+        🏆 Final Results
+      </div>
+      <h1 id="winner-headline" class="text-4xl sm:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-200 to-cyan-300">
+        Winner!
+      </h1>
+    </div>
+
+    <!-- 1st, 2nd, 3rd Place Podium -->
+    <div id="winner-podium" class="flex items-end justify-center gap-3 sm:gap-6 pt-4 pb-2"></div>
+
+    <!-- Dynamic Player Achievements -->
+    <div id="winner-achievements" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+
+    <!-- Full Standings Table -->
+    <div class="p-5 rounded-3xl bg-slate-900/90 border border-white/15 backdrop-blur-xl shadow-2xl overflow-x-auto">
+      <h3 class="font-black text-white mb-3">🏅 Full Match Statistics</h3>
+      <table class="w-full text-left text-xs sm:text-sm">
+        <thead>
+          <tr class="text-slate-400 border-b border-white/10">
+            <th class="py-2 pr-3">Rank</th>
+            <th class="py-2 pr-3">Player</th>
+            <th class="py-2 px-3 text-right">Score</th>
+            <th class="py-2 px-3 text-right">Solved</th>
+            <th class="py-2 px-3 text-right">Fastest</th>
+            <th class="py-2 pl-3 text-right">Best Streak</th>
+          </tr>
+        </thead>
+        <tbody id="winner-table-body" class="divide-y divide-white/5"></tbody>
+      </table>
+    </div>
+
+    <!-- Expandable Round History Accordion -->
+    <div class="rounded-3xl bg-slate-900/80 border border-white/15 overflow-hidden">
+      <button id="btn-winner-history-toggle" type="button" class="w-full px-5 py-4 flex items-center justify-between font-bold text-sm text-white hover:bg-white/5 transition">
+        <span id="winner-history-label">📜 Round-by-Round History</span>
+        <span id="winner-history-arrow">▼</span>
+      </button>
+      <div id="winner-history-body" class="hidden px-5 pb-4 space-y-2 border-t border-white/10 pt-3"></div>
+    </div>
+
+    <!-- Rematch / Return / Leave Buttons -->
+    <div class="flex flex-wrap items-center justify-center gap-3 pb-8">
+      <button id="btn-play-again" class="hidden px-7 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-black shadow-xl transition active:scale-95">
+        🔄 Play Again (Rematch)
+      </button>
+      <button id="btn-return-lobby" class="hidden px-7 py-3.5 rounded-2xl bg-violet-600 hover:bg-violet-500 text-white font-black shadow-xl transition active:scale-95">
+        🏠 Return to Lobby
+      </button>
+      <div id="winner-wait-host" class="hidden px-5 py-3 rounded-2xl bg-white/10 border border-white/15 text-xs font-bold text-cyan-200">
+        Waiting for Host to start a Rematch or return to Lobby...
+      </div>
+      <button data-leave-room class="px-6 py-3.5 rounded-2xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/35 text-rose-200 font-bold transition">
+        Leave Room
+      </button>
+    </div>
+  </section>
+
+  <!-- ==================== MODAL: SOUND SETTINGS ==================== -->
+  <div id="modal-sound" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-sm">
+    <div class="w-full max-w-md rounded-3xl bg-slate-900/95 border border-violet-500/30 shadow-2xl p-6 text-white animate-pop-in">
+      <div class="flex items-center justify-between mb-6">
+        <h2 class="text-xl font-black">🔊 Sound & Music</h2>
+        <button data-close-modal="modal-sound" class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 font-bold">✕</button>
+      </div>
+      <div class="space-y-5">
+        <!-- Music Control -->
+        <div class="p-4 rounded-2xl bg-white/5 border border-white/10">
+          <div class="flex items-center justify-between mb-3">
+            <span class="font-bold text-cyan-300 text-sm">🎵 Background Music</span>
+            <button id="btn-mute-music" class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">Active</button>
+          </div>
+          <div class="flex items-center gap-3">
+            <input id="slider-music" type="range" min="0" max="100" value="25" class="w-full accent-cyan-400 cursor-pointer" />
+            <span id="label-music-pct" class="text-xs font-mono-game w-10 text-right text-slate-300">25%</span>
+          </div>
+        </div>
+        <!-- SFX Control -->
+        <div class="p-4 rounded-2xl bg-white/5 border border-white/10">
+          <div class="flex items-center justify-between mb-3">
+            <span class="font-bold text-amber-300 text-sm">✨ Sound Effects (SFX)</span>
+            <button id="btn-mute-sfx" class="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">Active</button>
+          </div>
+          <div class="flex items-center gap-3">
+            <input id="slider-sfx" type="range" min="0" max="100" value="70" class="w-full accent-amber-400 cursor-pointer" />
+            <span id="label-sfx-pct" class="text-xs font-mono-game w-10 text-right text-slate-300">70%</span>
+          </div>
+          <button id="btn-test-sfx" class="mt-3 w-full py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-200 text-xs font-bold transition">
+            Test Sound Effect
+          </button>
+        </div>
+      </div>
+      <button data-close-modal="modal-sound" class="mt-6 w-full py-3 rounded-2xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 font-bold shadow-lg transition">
+        Done
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: HOW TO PLAY ==================== -->
+  <div id="modal-help" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+    <div class="w-full max-w-2xl max-h-[88vh] overflow-y-auto rounded-3xl bg-slate-900 border border-cyan-500/30 shadow-2xl p-6 text-white animate-pop-in">
+      <div class="flex items-center justify-between mb-5 sticky top-0 bg-slate-900/95 py-1">
+        <h2 class="text-xl font-black">❓ How to Play ClueRush Live</h2>
+        <button data-close-modal="modal-help" class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 font-bold">✕</button>
+      </div>
+      <div class="space-y-4 text-sm text-slate-300">
+        <div class="p-4 rounded-2xl bg-white/5 border border-white/10">
+          <h3 class="font-bold text-white mb-1">👥 2–8 Players & Fair Turn Rotation</h3>
+          <p class="text-xs leading-relaxed">
+            Every round, one player is rotated in as the <strong class="text-amber-300">Hint Giver</strong>. They pick a secret answer within 25 seconds, and everyone races a synchronized <strong class="text-cyan-300">120-second countdown</strong> to guess it!
+          </p>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="p-3.5 rounded-2xl bg-cyan-500/10 border border-cyan-500/25">
+            <div class="font-extrabold text-cyan-300 mb-1">Mode A: Numbers</div>
+            <p class="text-xs">Pick a secret number (1–100 or custom), select digit count, and send live clues: Even/Odd, Greater/Less Than, or Ranges.</p>
+          </div>
+          <div class="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25">
+            <div class="font-extrabold text-amber-300 mb-1">Mode B: Word Draw</div>
+            <p class="text-xs">Pick a category & secret word, then draw it live! No writing letters. Optional 1st-letter hint costs -15 pts.</p>
+          </div>
+          <div class="p-3.5 rounded-2xl bg-fuchsia-500/10 border border-fuchsia-500/25">
+            <div class="font-extrabold text-fuchsia-300 mb-1">Mode C: Draw & Guess</div>
+            <p class="text-xs">Choose Easy (+0), Medium (+15 bonus), or Hard (+30 bonus) word and draw it while friends race to guess!</p>
+          </div>
+        </div>
+        <div class="p-4 rounded-2xl bg-white/5 border border-white/10">
+          <h3 class="font-bold text-white mb-2.5">🏆 Speed-Based Scoring Table</h3>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs mb-3">
+            <div class="flex justify-between px-3 py-2 rounded-xl bg-slate-950/70 border border-white/10"><span class="text-slate-400">100–120s left</span><span class="font-black text-emerald-300">100 pts</span></div>
+            <div class="flex justify-between px-3 py-2 rounded-xl bg-slate-950/70 border border-white/10"><span class="text-slate-400">80–99s left</span><span class="font-black text-emerald-300">80 pts</span></div>
+            <div class="flex justify-between px-3 py-2 rounded-xl bg-slate-950/70 border border-white/10"><span class="text-slate-400">60–79s left</span><span class="font-black text-emerald-300">60 pts</span></div>
+            <div class="flex justify-between px-3 py-2 rounded-xl bg-slate-950/70 border border-white/10"><span class="text-slate-400">40–59s left</span><span class="font-black text-emerald-300">40 pts</span></div>
+            <div class="flex justify-between px-3 py-2 rounded-xl bg-slate-950/70 border border-white/10"><span class="text-slate-400">20–39s left</span><span class="font-black text-emerald-300">20 pts</span></div>
+            <div class="flex justify-between px-3 py-2 rounded-xl bg-slate-950/70 border border-white/10"><span class="text-slate-400">1–19s left</span><span class="font-black text-emerald-300">10 pts</span></div>
+          </div>
+          <ul class="space-y-1 text-xs text-slate-300 list-disc list-inside">
+            <li><strong class="text-amber-300">1st Correct:</strong> 100% points + <strong>15 Fastest Guess Bonus</strong>!</li>
+            <li><strong class="text-cyan-300">2nd / 3rd / 4th+:</strong> 50% / 25% / 15% of base speed points.</li>
+            <li><strong class="text-violet-300">Hint Giver:</strong> +50 pts if at least 1 player guesses correctly (0 if nobody does).</li>
+            <li><strong class="text-rose-300">Bonuses & Penalties:</strong> Winning Streak (+10/round), Hard (+30), Medium (+15), 1st-Letter Hint (-15).</li>
+          </ul>
+        </div>
+      </div>
+      <button data-close-modal="modal-help" class="mt-6 w-full py-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 font-bold text-white shadow-lg transition">
+        Got It, Let's Play!
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== MODAL: ROUND HISTORY ==================== -->
+  <div id="modal-history" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+    <div class="w-full max-w-xl max-h-[85vh] overflow-y-auto rounded-3xl bg-slate-900 border border-violet-500/30 shadow-2xl p-6 text-white animate-pop-in">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-black">📜 Previous Rounds History</h2>
+        <button data-close-modal="modal-history" class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-slate-300 font-bold">✕</button>
+      </div>
+      <div id="modal-history-list" class="space-y-3"></div>
+    </div>
+  </div>
+
+  <!-- ==================== COMPLETE APPLICATION SCRIPT ==================== -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js';
+    import {
+      getAuth,
+      signInAnonymously,
+      signInWithCustomToken,
+      onAuthStateChanged,
+    } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
+    import {
+      getFirestore,
+      doc,
+      getDoc,
+      setDoc,
+      updateDoc,
+      onSnapshot,
+      runTransaction,
+    } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js';
+
+    // =========================================================================
+    // 1. CONSTANTS, AVATARS, WORD BANKS & PURE HELPERS
+    // =========================================================================
+    const MAX_PLAYERS = 8;
+    const MIN_PLAYERS = 2;
+    const ROUND_DURATION_SEC = 120;
+    const CHOOSING_DURATION_SEC = 25;
+    const ROUND_END_DURATION_SEC = 9;
+
+    const AVATARS = [
+      { id: 'astro-cat', emoji: '🐱', label: 'Astro Cat', bg: 'from-violet-500 to-purple-700', ring: 'ring-violet-400' },
+      { id: 'cyber-fox', emoji: '🦊', label: 'Cyber Fox', bg: 'from-cyan-400 to-blue-600', ring: 'ring-cyan-400' },
+      { id: 'disco-bear', emoji: '🐻', label: 'Disco Bear', bg: 'from-amber-400 to-orange-600', ring: 'ring-amber-400' },
+      { id: 'neon-frog', emoji: '🐸', label: 'Neon Frog', bg: 'from-emerald-400 to-green-600', ring: 'ring-emerald-400' },
+      { id: 'star-owl', emoji: '🦉', label: 'Star Owl', bg: 'from-rose-400 to-pink-600', ring: 'ring-rose-400' },
+      { id: 'pixel-panda', emoji: '🐼', label: 'Pixel Panda', bg: 'from-indigo-400 to-slate-700', ring: 'ring-indigo-400' },
+      { id: 'turbo-dog', emoji: '🐶', label: 'Turbo Dog', bg: 'from-orange-400 to-red-600', ring: 'ring-orange-400' },
+      { id: 'mystic-uni', emoji: '🦄', label: 'Mystic Uni', bg: 'from-fuchsia-400 to-purple-600', ring: 'ring-fuchsia-400' },
+      { id: 'chill-peng', emoji: '🐧', label: 'Chill Peng', bg: 'from-sky-400 to-indigo-600', ring: 'ring-sky-400' },
+      { id: 'blaze-dragon', emoji: '🐲', label: 'Blaze Dragon', bg: 'from-red-500 to-rose-700', ring: 'ring-red-400' },
+      { id: 'sunny-bee', emoji: '🐝', label: 'Sunny Bee', bg: 'from-yellow-400 to-amber-600', ring: 'ring-yellow-300' },
+      { id: 'cosmic-octo', emoji: '🐙', label: 'Cosmic Octo', bg: 'from-teal-400 to-emerald-700', ring: 'ring-teal-400' },
+    ];
+
+    const CATEGORIES = ['Animals', 'Fruits', 'Food', 'Objects', 'Places', 'Sports', 'Nature'];
+
+    const WORD_BANK = {
+      Animals: {
+        easy: ['Cat', 'Dog', 'Fish', 'Duck', 'Frog', 'Bear', 'Lion', 'Pig', 'Bird', 'Cow'],
+        medium: ['Penguin', 'Elephant', 'Giraffe', 'Octopus', 'Dolphin', 'Kangaroo', 'Turtle', 'Peacock'],
+        hard: ['Chameleon', 'Platypus', 'Flamingo', 'Hedgehog', 'Scorpion', 'Armadillo', 'Jellyfish'],
+      },
+      Fruits: {
+        easy: ['Apple', 'Banana', 'Grape', 'Pear', 'Peach', 'Lemon', 'Mango', 'Cherry'],
+        medium: ['Pineapple', 'Watermelon', 'Strawberry', 'Blueberry', 'Avocado', 'Coconut', 'Kiwi'],
+        hard: ['Pomegranate', 'Dragonfruit', 'Passionfruit', 'Blackberry', 'Tangerine', 'Cantaloupe'],
+      },
+      Food: {
+        easy: ['Pizza', 'Cake', 'Bread', 'Egg', 'Soup', 'Taco', 'Pie', 'Rice', 'Donut'],
+        medium: ['Burger', 'Pancake', 'Popcorn', 'Sandwich', 'Spaghetti', 'Cupcake', 'Pretzel', 'Sushi'],
+        hard: ['Croissant', 'Lasagna', 'Guacamole', 'Cheesecake', 'Dumpling', 'Tiramisu', 'Ramen'],
+      },
+      Objects: {
+        easy: ['Book', 'Chair', 'Clock', 'Key', 'Lamp', 'Cup', 'Hat', 'Bell', 'Ball'],
+        medium: ['Umbrella', 'Backpack', 'Guitar', 'Camera', 'Glasses', 'Scissors', 'Rocket', 'Compass'],
+        hard: ['Telescope', 'Microscope', 'Hourglass', 'Chandelier', 'Submarine', 'Parachute', 'Typewriter'],
+      },
+      Places: {
+        easy: ['Beach', 'Park', 'School', 'House', 'Farm', 'Zoo', 'Shop', 'Bridge'],
+        medium: ['Castle', 'Airport', 'Library', 'Hospital', 'Volcano', 'Island', 'Museum', 'Stadium'],
+        hard: ['Lighthouse', 'Pyramid', 'Observatory', 'Aquarium', 'Cathedral', 'Skyscraper', 'Greenhouse'],
+      },
+      Sports: {
+        easy: ['Soccer', 'Tennis', 'Golf', 'Swim', 'Run', 'Boxing', 'Skiing', 'Surf'],
+        medium: ['Basketball', 'Baseball', 'Bowling', 'Archery', 'Cycling', 'Volleyball', 'Karate'],
+        hard: ['Badminton', 'Gymnastics', 'Skateboard', 'Fencing', 'Snowboard', 'Trampoline', 'Kayaking'],
+      },
+      Nature: {
+        easy: ['Sun', 'Moon', 'Star', 'Tree', 'Rain', 'Cloud', 'Wave', 'Fire', 'Leaf'],
+        medium: ['Rainbow', 'Mountain', 'Waterfall', 'Tornado', 'Cactus', 'Mushroom', 'Lightning', 'Glacier'],
+        hard: ['Aurora', 'Avalanche', 'Constellation', 'Eclipse', 'Hurricane', 'Quicksand', 'Coralreef'],
+      },
+    };
+
+    const DRAW_COLORS = [
+      '#ffffff', '#0f172a', '#ef4444', '#f97316', '#facc15', '#22c55e',
+      '#06b6d4', '#3b82f6', '#8b5cf6', '#ec4899', '#a16207', '#94a3b8',
+    ];
+
+    const BRUSH_SIZES = [
+      { label: 'S', value: 3 },
+      { label: 'M', value: 7 },
+      { label: 'L', value: 14 },
+      { label: 'XL', value: 24 },
+    ];
+
+    const REACTION_EMOJIS = ['🔥', '👏', '😂', '😮', '🎉', '💡'];
+    const BOT_NAMES = ['PixelBot', 'NeonBot', 'TurboBot', 'AstroBot', 'SparkBot', 'CyberBot', 'VibeBot'];
+
+    // Safe HTML escape to prevent XSS in usernames, chat & clues
+    const escapeHtml = (str) =>
+      String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    // Reversible obfuscation so plaintext answers are never casually exposed
+    const encodeSecret = (str) => {
+      try {
+        const clean = String(str);
+        let out = '';
+        for (let i = 0; i < clean.length; i++) out += String.fromCharCode(clean.charCodeAt(i) ^ 42);
+        return btoa(unescape(encodeURIComponent(out)));
+      } catch {
+        return btoa(String(str));
+      }
+    };
+
+    const decodeSecret = (encoded) => {
+      if (!encoded) return '';
+      try {
+        const raw = decodeURIComponent(escape(atob(encoded)));
+        let out = '';
+        for (let i = 0; i < raw.length; i++) out += String.fromCharCode(raw.charCodeAt(i) ^ 42);
+        return out;
+      } catch {
+        return '';
+      }
+    };
+
+    const generateRoomCode = () => {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let code = '';
+      for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+      return code;
+    };
+
+    const shuffleArray = (arr) => {
+      const copy = [...arr];
+      for (let i = copy.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [copy[i], copy[j]] = [copy[j], copy[i]];
+      }
+      return copy;
+    };
+
+    const editDistance = (a, b) => {
+      const s = a.toLowerCase();
+      const t = b.toLowerCase();
+      if (s === t) return 0;
+      if (!s.length) return t.length;
+      if (!t.length) return s.length;
+      const dp = Array.from({ length: s.length + 1 }, () => new Array(t.length + 1).fill(0));
+      for (let i = 0; i <= s.length; i++) dp[i][0] = i;
+      for (let j = 0; j <= t.length; j++) dp[0][j] = j;
+      for (let i = 1; i <= s.length; i++) {
+        for (let j = 1; j <= t.length; j++) {
+          const cost = s[i - 1] === t[j - 1] ? 0 : 1;
+          dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+        }
+      }
+      return dp[s.length][t.length];
+    };
+
+    const getBasePointsForRemaining = (remainingSec) => {
+      if (remainingSec >= 100) return 100;
+      if (remainingSec >= 80) return 80;
+      if (remainingSec >= 60) return 60;
+      if (remainingSec >= 40) return 40;
+      if (remainingSec >= 20) return 20;
+      if (remainingSec >= 1) return 10;
+      return 0;
+    };
+
+    const calculateGuessPoints = ({
+      remainingSec,
+      placementRank,
+      difficultyBonus = 0,
+      previousStreak = 0,
+      hintPenalty = 0,
+    }) => {
+      const base = getBasePointsForRemaining(remainingSec);
+      let multiplier = 0.15;
+      let fastestBonus = 0;
+      if (placementRank === 1) {
+        multiplier = 1.0;
+        fastestBonus = 15;
+      } else if (placementRank === 2) {
+        multiplier = 0.5;
+      } else if (placementRank === 3) {
+        multiplier = 0.25;
+      }
+      const placedBase = Math.max(5, Math.round(base * multiplier));
+      const streakBonus = previousStreak > 0 ? previousStreak * 10 : 0;
+      const total = Math.max(5, placedBase + fastestBonus + difficultyBonus + streakBonus - hintPenalty);
+      return { base, placedBase, fastestBonus, difficultyBonus, streakBonus, hintPenalty, total };
+    };
+
+    const generateModeCChoices = () => {
+      const shuffledCats = shuffleArray(CATEGORIES);
+      const pick = (diff, idx, bonus) => {
+        const category = shuffledCats[idx % shuffledCats.length];
+        const pool = WORD_BANK[category][diff];
+        return {
+          word: pool[Math.floor(Math.random() * pool.length)],
+          category,
+          difficulty: diff,
+          bonus,
+        };
+      };
+      return [pick('easy', 0, 0), pick('medium', 1, 15), pick('hard', 2, 30)];
+    };
+
+    const pickRandomWord = (category, difficulty = 'medium') => {
+      const cat = WORD_BANK[category] ? category : CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];
+      const pool = WORD_BANK[cat][difficulty] || WORD_BANK[cat].medium;
+      return {
+        category: cat,
+        word: pool[Math.floor(Math.random() * pool.length)],
+        difficulty,
+        bonus: difficulty === 'hard' ? 30 : difficulty === 'medium' ? 15 : 0,
+      };
+    };
+
+    const resolveRoundMode = (settingMode, roundNumber) => {
+      if (settingMode !== 'mixed') return settingMode;
+      return ['modeA', 'modeB', 'modeC'][(roundNumber - 1) % 3];
+    };
+
+    const getModeMeta = (mode) => {
+      switch (mode) {
+        case 'modeA':
+          return { name: 'Number Guessing', short: 'Numbers', badge: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' };
+        case 'modeB':
+          return { name: 'Alphabet & Word', short: 'Word Draw', badge: 'bg-amber-500/20 text-amber-300 border-amber-500/40' };
+        case 'modeC':
+          return { name: 'Draw & Guess', short: 'Draw & Guess', badge: 'bg-fuchsia-500/20 text-fuchsia-300 border-fuchsia-500/40' };
+        default:
+          return { name: 'Mixed Party', short: 'Mixed', badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' };
+      }
+    };
+
+    const serializePoints = (pts) => pts.map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`).join(';');
+    const deserializePoints = (str) => {
+      if (!str) return [];
+      return str
+        .split(';')
+        .filter(Boolean)
+        .map((pair) => {
+          const [x, y] = pair.split(',').map(Number);
+          return { x: isNaN(x) ? 0 : x, y: isNaN(y) ? 0 : y };
+        });
+    };
+
+    const formatClock = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+    // Safe clipboard copy compatible with iFrame sandboxes
+    const copyTextSafe = (text) => {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+
+    // Avatar HTML builder
+    const renderAvatarHtml = (avatarId, size = 'md', { isHost = false, isBot = false, online = true } = {}) => {
+      const av = AVATARS.find((a) => a.id === avatarId) || AVATARS[0];
+      const sizes = {
+        xs: 'w-7 h-7 text-sm rounded-xl',
+        sm: 'w-9 h-9 text-lg rounded-xl',
+        md: 'w-12 h-12 text-2xl rounded-2xl',
+        lg: 'w-16 h-16 text-3xl rounded-2xl',
+        xl: 'w-20 h-20 text-4xl rounded-3xl',
+      };
+      return `
+        <div class="relative inline-flex shrink-0">
+          <div class="${sizes[size]} bg-gradient-to-br ${av.bg} ring-2 ${av.ring} flex items-center justify-center shadow-lg select-none">
+            <span>${av.emoji}</span>
+          </div>
+          ${isHost ? `<span title="Room Host" class="absolute -top-2 -right-2 bg-amber-400 text-slate-950 rounded-full w-5 h-5 flex items-center justify-center text-[11px] font-black shadow-md ring-2 ring-slate-900">👑</span>` : ''}
+          ${isBot && !isHost ? `<span title="Practice Bot" class="absolute -top-1.5 -right-1.5 bg-cyan-400 text-slate-950 rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-black shadow-md ring-2 ring-slate-900">🤖</span>` : ''}
+          ${size !== 'xs' ? `<span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full ring-2 ring-slate-900 ${online ? 'bg-emerald-400' : 'bg-slate-500'}"></span>` : ''}
+        </div>
+      `;
+    };
+
+    // =========================================================================
+    // 2. WEB AUDIO API SOUND EFFECTS & LOOPING MUSIC ENGINE
+    // =========================================================================
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.sfxVolume = 0.7;
+        this.musicVolume = 0.25;
+        this.sfxMuted = false;
+        this.musicMuted = false;
+        this.musicTimer = null;
+        this.musicStep = 0;
+        this.musicStarted = false;
+      }
+      ensureContext() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) this.ctx = new AudioCtx();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume().catch(() => {});
+        }
+        return this.ctx;
+      }
+      updateSettings(cfg) {
+        if (typeof cfg.sfxVolume === 'number') this.sfxVolume = cfg.sfxVolume;
+        if (typeof cfg.musicVolume === 'number') this.musicVolume = cfg.musicVolume;
+        if (typeof cfg.sfxMuted === 'boolean') this.sfxMuted = cfg.sfxMuted;
+        if (typeof cfg.musicMuted === 'boolean') this.musicMuted = cfg.musicMuted;
+        if (this.musicMuted || this.musicVolume <= 0.01) {
+          this.stopMusic();
+        } else if (this.musicStarted && !this.musicTimer) {
+          this.startMusic();
+        }
+      }
+      tone(freq, dur, type = 'sine', delay = 0, volScale = 1, slideTo = null) {
+        if (this.sfxMuted || this.sfxVolume <= 0.01) return;
+        const ctx = this.ensureContext();
+        if (!ctx) return;
+        try {
+          const now = ctx.currentTime + delay;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = type;
+          osc.frequency.setValueAtTime(freq, now);
+          if (slideTo) osc.frequency.exponentialRampToValueAtTime(Math.max(20, slideTo), now + dur);
+          const peak = Math.min(0.42, this.sfxVolume * 0.34 * volScale);
+          gain.gain.setValueAtTime(0.0001, now);
+          gain.gain.linearRampToValueAtTime(peak, now + 0.012);
+          gain.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + dur + 0.02);
+        } catch {}
+      }
+      play(name) {
+        if (this.sfxMuted || this.sfxVolume <= 0.01) return;
+        switch (name) {
+          case 'click':
+            this.tone(620, 0.055, 'triangle', 0, 0.65, 860);
+            break;
+          case 'join':
+            this.tone(523.25, 0.11, 'sine', 0, 0.8);
+            this.tone(659.25, 0.16, 'sine', 0.09, 0.9);
+            break;
+          case 'roomStart':
+            [392, 493.88, 587.33, 783.99].forEach((f, i) => this.tone(f, 0.14, 'triangle', i * 0.07, 0.9));
+            break;
+          case 'playerSelect':
+            [440, 554.37, 659.25].forEach((f, i) => this.tone(f, 0.1, 'sine', i * 0.06, 0.8));
+            break;
+          case 'roundStart':
+            this.tone(523.25, 0.12, 'triangle', 0, 0.9);
+            this.tone(659.25, 0.12, 'triangle', 0.1, 0.9);
+            this.tone(783.99, 0.25, 'triangle', 0.2, 1.0);
+            break;
+          case 'tick':
+            this.tone(920, 0.045, 'square', 0, 0.35, 650);
+            break;
+          case 'warn30':
+            this.tone(660, 0.12, 'triangle', 0, 0.85);
+            this.tone(660, 0.16, 'triangle', 0.16, 0.95);
+            break;
+          case 'warn10':
+            this.tone(880, 0.1, 'sawtooth', 0, 0.55);
+            this.tone(880, 0.1, 'sawtooth', 0.14, 0.6);
+            this.tone(987.77, 0.18, 'sawtooth', 0.28, 0.65);
+            break;
+          case 'correct':
+            this.tone(587.33, 0.1, 'triangle', 0, 0.95);
+            this.tone(739.99, 0.1, 'triangle', 0.08, 0.95);
+            this.tone(880, 0.12, 'triangle', 0.16, 1.0);
+            this.tone(1174.66, 0.28, 'sine', 0.24, 1.0);
+            break;
+          case 'wrong':
+            this.tone(230, 0.12, 'sawtooth', 0, 0.45, 165);
+            this.tone(175, 0.16, 'sawtooth', 0.09, 0.4, 130);
+            break;
+          case 'timeOver':
+            this.tone(440, 0.18, 'sawtooth', 0, 0.65, 370);
+            this.tone(349.23, 0.22, 'sawtooth', 0.18, 0.65, 293.66);
+            this.tone(261.63, 0.38, 'sawtooth', 0.38, 0.7, 196);
+            break;
+          case 'winner':
+            [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => this.tone(f, 0.22, 'triangle', i * 0.09, 1.0));
+            break;
+          case 'victory': {
+            const notes = [
+              [523.25, 0, 0.14], [523.25, 0.15, 0.14], [523.25, 0.3, 0.14], [659.25, 0.45, 0.26],
+              [587.33, 0.72, 0.16], [659.25, 0.9, 0.16], [783.99, 1.08, 0.45], [1046.5, 1.08, 0.45],
+            ];
+            notes.forEach(([f, d, dur]) => this.tone(f, dur, 'triangle', d, 0.95));
+            break;
+          }
+        }
+      }
+      startMusic() {
+        this.musicStarted = true;
+        if (this.musicMuted || this.musicVolume <= 0.01 || this.musicTimer) return;
+        const melody = [523.25, 0, 659.25, 783.99, 659.25, 0, 587.33, 523.25, 440, 0, 523.25, 659.25, 587.33, 0, 392, 0];
+        const bass = [130.81, 0, 130.81, 0, 146.83, 0, 146.83, 0, 110, 0, 110, 0, 196, 0, 196, 0];
+        this.musicTimer = setInterval(() => {
+          if (this.musicMuted || this.musicVolume <= 0.01) return;
+          const ctx = this.ctx;
+          if (!ctx || ctx.state !== 'running') return;
+          const idx = this.musicStep % melody.length;
+          const now = ctx.currentTime;
+          try {
+            if (melody[idx] > 0) {
+              const o = ctx.createOscillator();
+              const g = ctx.createGain();
+              o.type = 'triangle';
+              o.frequency.setValueAtTime(melody[idx], now);
+              g.gain.setValueAtTime(0.0001, now);
+              g.gain.linearRampToValueAtTime(this.musicVolume * 0.09, now + 0.015);
+              g.gain.exponentialRampToValueAtTime(0.0001, now + 0.22);
+              o.connect(g);
+              g.connect(ctx.destination);
+              o.start(now);
+              o.stop(now + 0.24);
+            }
+            if (bass[idx] > 0) {
+              const oB = ctx.createOscillator();
+              const gB = ctx.createGain();
+              oB.type = 'sine';
+              oB.frequency.setValueAtTime(bass[idx], now);
+              gB.gain.setValueAtTime(0.0001, now);
+              gB.gain.linearRampToValueAtTime(this.musicVolume * 0.12, now + 0.015);
+              gB.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+              oB.connect(gB);
+              gB.connect(ctx.destination);
+              oB.start(now);
+              oB.stop(now + 0.27);
+            }
+          } catch {}
+          this.musicStep += 1;
+        }, 240);
+      }
+      stopMusic() {
+        if (this.musicTimer) {
+          clearInterval(this.musicTimer);
+          this.musicTimer = null;
+        }
+      }
+    }
+
+    const soundEngine = new SoundEngine();
+
+    // =========================================================================
+    // 3. DATA BACKEND ADAPTER (FIREBASE FIRESTORE + BROADCASTCHANNEL FALLBACK)
+    // =========================================================================
+    const hasFirebaseConfig = typeof __firebase_config !== 'undefined' && __firebase_config;
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+    let fbApp = null;
+    let fbAuth = null;
+    let fbDb = null;
+
+    // Fallback in-memory + BroadcastChannel store (zero localStorage, supports multi-tab offline play)
+    const localStore = {
+      rooms: {},
+      canvas: {},
+      feed: {},
+      profile: {},
+      listeners: new Map(),
+      channel: typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('cluerush_live_sync_v1') : null,
+    };
+
+    const cloneObj = (o) => (o === undefined ? undefined : JSON.parse(JSON.stringify(o)));
+
+    const notifyLocalKey = (key, value) => {
+      const set = localStore.listeners.get(key);
+      if (set) set.forEach((cb) => cb(cloneObj(value)));
+    };
+
+    if (localStore.channel) {
+      localStore.channel.onmessage = (ev) => {
+        const msg = ev.data || {};
+        if (msg.type === 'SET') {
+          localStore[msg.col][msg.id] = msg.data;
+          notifyLocalKey(`${msg.col}:${msg.id}`, msg.data);
+        } else if (msg.type === 'SYNC_REQ' && localStore.rooms[msg.id]) {
+          localStore.channel.postMessage({ type: 'SET', col: 'rooms', id: msg.id, data: localStore.rooms[msg.id] });
+          if (localStore.canvas[msg.id]) {
+            localStore.channel.postMessage({ type: 'SET', col: 'canvas', id: msg.id, data: localStore.canvas[msg.id] });
+          }
+          if (localStore.feed[msg.id]) {
+            localStore.channel.postMessage({ type: 'SET', col: 'feed', id: msg.id, data: localStore.feed[msg.id] });
+          }
+        }
+      };
+    }
+
+    // Apply dotted field paths like "players.uid.score" for local fallback updates
+    const applyDotPatch = (target, patch) => {
+      const next = cloneObj(target || {});
+      for (const [k, v] of Object.entries(patch)) {
+        const parts = k.split('.');
+        let cur = next;
+        for (let i = 0; i < parts.length - 1; i++) {
+          if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+          cur = cur[parts[i]];
+        }
+        cur[parts[parts.length - 1]] = v;
+      }
+      return next;
+    };
+
+    const backend = {
+      isCloud: false,
+      user: null,
+
+      async init() {
+        if (hasFirebaseConfig) {
+          try {
+            const cfg = JSON.parse(__firebase_config);
+            fbApp = initializeApp(cfg);
+            fbAuth = getAuth(fbApp);
+            fbDb = getFirestore(fbApp);
+            this.isCloud = true;
+
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+              await signInWithCustomToken(fbAuth, __initial_auth_token);
+            } else {
+              await signInAnonymously(fbAuth);
+            }
+
+            await new Promise((resolve) => {
+              onAuthStateChanged(fbAuth, (u) => {
+                if (u) {
+                  this.user = u;
+                  resolve();
+                }
+              });
+            });
+            return this.user;
+          } catch (err) {
+            console.error('Firebase init fallback:', err);
+          }
+        }
+
+        // Offline local fallback mode
+        this.isCloud = false;
+        const uid = `local_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
+        this.user = { uid };
+        return this.user;
+      },
+
+      docRef(col, id) {
+        const mapCol = {
+          rooms: 'cluerush_rooms',
+          canvas: 'cluerush_canvas',
+          feed: 'cluerush_feed',
+        }[col];
+        return doc(fbDb, 'artifacts', appId, 'public', 'data', mapCol, id);
+      },
+
+      profileRef() {
+        return doc(fbDb, 'artifacts', appId, 'users', this.user.uid, 'cluerush_profile', 'settings');
+      },
+
+      async getProfile() {
+        if (!this.user) return null;
+        if (this.isCloud) {
+          const snap = await getDoc(this.profileRef());
+          return snap.exists() ? snap.data() : null;
+        }
+        return localStore.profile[this.user.uid] || null;
+      },
+
+      async saveProfile(data) {
+        if (!this.user) return;
+        if (this.isCloud) {
+          await setDoc(this.profileRef(), data, { merge: true });
+        } else {
+          localStore.profile[this.user.uid] = { ...(localStore.profile[this.user.uid] || {}), ...data };
+        }
+      },
+
+      async getDocData(col, id) {
+        if (!this.user) return null;
+        if (this.isCloud) {
+          const snap = await getDoc(this.docRef(col, id));
+          return snap.exists() ? snap.data() : null;
+        }
+        if (!localStore[col][id] && localStore.channel) {
+          localStore.channel.postMessage({ type: 'SYNC_REQ', id });
+          await new Promise((r) => setTimeout(r, 140));
+        }
+        return localStore[col][id] ? cloneObj(localStore[col][id]) : null;
+      },
+
+      async setDocData(col, id, data) {
+        if (!this.user) return;
+        if (this.isCloud) {
+          await setDoc(this.docRef(col, id), data);
+        } else {
+          localStore[col][id] = cloneObj(data);
+          notifyLocalKey(`${col}:${id}`, data);
+          localStore.channel?.postMessage({ type: 'SET', col, id, data: localStore[col][id] });
+        }
+      },
+
+      async updateDocData(col, id, patch) {
+        if (!this.user) return;
+        if (this.isCloud) {
+          await updateDoc(this.docRef(col, id), patch);
+        } else {
+          const merged = applyDotPatch(localStore[col][id], patch);
+          localStore[col][id] = merged;
+          notifyLocalKey(`${col}:${id}`, merged);
+          localStore.channel?.postMessage({ type: 'SET', col, id, data: merged });
+        }
+      },
+
+      async transact(col, id, updaterFn) {
+        if (!this.user) return null;
+        if (this.isCloud) {
+          let ret = null;
+          await runTransaction(fbDb, async (tx) => {
+            const ref = this.docRef(col, id);
+            const snap = await tx.get(ref);
+            const existing = snap.exists() ? snap.data() : null;
+            const result = updaterFn(existing ? cloneObj(existing) : null);
+            if (!result) return;
+            ret = result.returnValue;
+            if (result.set !== undefined) {
+              tx.set(ref, result.set);
+            } else if (result.update !== undefined) {
+              tx.update(ref, result.update);
+            }
+          });
+          return ret;
+        } else {
+          const existing = localStore[col][id] ? cloneObj(localStore[col][id]) : null;
+          const result = updaterFn(existing);
+          if (!result) return null;
+          if (result.set !== undefined) {
+            localStore[col][id] = cloneObj(result.set);
+          } else if (result.update !== undefined) {
+            localStore[col][id] = applyDotPatch(existing, result.update);
+          }
+          notifyLocalKey(`${col}:${id}`, localStore[col][id]);
+          localStore.channel?.postMessage({ type: 'SET', col, id, data: localStore[col][id] });
+          return result.returnValue;
+        }
+      },
+
+      subscribe(col, id, onData, onError) {
+        if (!this.user) return () => {};
+        if (this.isCloud) {
+          return onSnapshot(
+            this.docRef(col, id),
+            (snap) => onData(snap.exists() ? snap.data() : null),
+            (err) => {
+              console.error(`Snapshot error (${col}/${id}):`, err);
+              if (onError) onError(err);
+            }
+          );
+        }
+        const key = `${col}:${id}`;
+        if (!localStore.listeners.has(key)) localStore.listeners.set(key, new Set());
+        localStore.listeners.get(key).add(onData);
+        if (localStore[col][id]) onData(cloneObj(localStore[col][id]));
+        return () => {
+          localStore.listeners.get(key)?.delete(onData);
+        };
+      },
+    };
+
+    // =========================================================================
+    // 4. APPLICATION STATE
+    // =========================================================================
+    const state = {
+      user: null,
+      username: `Player${Math.floor(100 + Math.random() * 899)}`,
+      avatarId: AVATARS[0].id,
+      audio: { sfxVolume: 0.7, musicVolume: 0.25, sfxMuted: false, musicMuted: false },
+
+      activeRoomCode: null,
+      reconnectRoomCode: null,
+      room: null,
+      strokes: [],
+      messages: [],
+      remainingSec: 0,
+
+      // Local UI state
+      setupDigits: 2,
+      setupCategory: 'Animals',
+      showSecretNum: true,
+      drawTool: 'pencil',
+      drawColor: '#ffffff',
+      drawSize: 7,
+      isDrawing: false,
+      activeStroke: null,
+      lastStreamAt: 0,
+
+      // Tracking refs
+      unsubs: [],
+      seenReactions: new Set(),
+      prevPlayerCount: 0,
+      prevPhase: null,
+      prevRoundNum: 0,
+      lastWarnSec: -1,
+      transitionLocked: false,
+      heartbeatTimer: null,
+      clockTimer: null,
+      botTimers: [],
+      confettiAnimId: null,
+    };
+
+    // DOM shortcuts
+    const $ = (id) => document.getElementById(id);
+
+    const showToast = (text, duration = 2200) => {
+      const el = $('global-toast');
+      el.textContent = text;
+      el.classList.remove('hidden');
+      clearTimeout(el._t);
+      el._t = setTimeout(() => el.classList.add('hidden'), duration);
+    };
+
+    const showCloseToast = (text) => {
+      const el = $('close-guess-toast');
+      el.textContent = text;
+      el.classList.remove('hidden');
+      clearTimeout(el._t);
+      el._t = setTimeout(() => el.classList.add('hidden'), 2200);
+    };
+
+    const setHomeError = (msg) => {
+      if (!msg) {
+        $('home-error').classList.add('hidden');
+      } else {
+        $('home-error-text').textContent = msg;
+        $('home-error').classList.remove('hidden');
+      }
+    };
+
+    const saveCurrentProfile = async (overrides = {}) => {
+      if (!state.user) return;
+      try {
+        await backend.saveProfile({
+          username: overrides.username !== undefined ? overrides.username : state.username,
+          avatarId: overrides.avatarId !== undefined ? overrides.avatarId : state.avatarId,
+          audio: overrides.audio !== undefined ? overrides.audio : state.audio,
+          activeRoomCode: overrides.activeRoomCode !== undefined ? overrides.activeRoomCode : state.activeRoomCode,
+          updatedAt: Date.now(),
+        });
+      } catch (err) {
+        console.error('Save profile error:', err);
+      }
+    };
+
+    // =========================================================================
+    // 5. CONFETTI ANIMATION FOR WINNER CELEBRATION
+    // =========================================================================
+    const startConfetti = () => {
+      const canvas = $('confetti-canvas');
+      canvas.classList.remove('hidden');
+      const ctx = canvas.getContext('2d');
+      const resize = () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      };
+      resize();
+      window.addEventListener('resize', resize);
+      canvas._resizeFn = resize;
+
+      const colors = ['#8b5cf6', '#06b6d4', '#f59e0b', '#10b981', '#f43f5e', '#facc15', '#ec4899'];
+      const pieces = Array.from({ length: 130 }, () => ({
+        x: Math.random() * canvas.width,
+        y: Math.random() * -canvas.height,
+        w: 6 + Math.random() * 8,
+        h: 4 + Math.random() * 6,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        vx: (Math.random() - 0.5) * 2.5,
+        vy: 2.2 + Math.random() * 3.4,
+        rot: Math.random() * 360,
+        vrot: (Math.random() - 0.5) * 10,
+      }));
+
+      const loop = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        for (const p of pieces) {
+          p.x += p.vx;
+          p.y += p.vy;
+          p.rot += p.vrot;
+          if (p.y > canvas.height + 20) {
+            p.y = -20;
+            p.x = Math.random() * canvas.width;
+          }
+          ctx.save();
+          ctx.translate(p.x, p.y);
+          ctx.rotate((p.rot * Math.PI) / 180);
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+          ctx.restore();
+        }
+        state.confettiAnimId = requestAnimationFrame(loop);
+      };
+      cancelAnimationFrame(state.confettiAnimId);
+      loop();
+    };
+
+    const stopConfetti = () => {
+      cancelAnimationFrame(state.confettiAnimId);
+      state.confettiAnimId = null;
+      const canvas = $('confetti-canvas');
+      if (canvas._resizeFn) window.removeEventListener('resize', canvas._resizeFn);
+      canvas.classList.add('hidden');
+    };
+
+    // =========================================================================
+    // 6. DRAWING CANVAS ENGINE (RESPONSIVE, NORMALIZED, TOUCH + MOUSE)
+    // =========================================================================
+    const renderStrokeOnCtx = (ctx, stroke, width, height) => {
+      const pts = Array.isArray(stroke.points) ? stroke.points : deserializePoints(stroke.pts);
+      if (!pts || pts.length === 0) return;
+      ctx.save();
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      const scaleFactor = width / 720;
+      ctx.lineWidth = Math.max(2, (stroke.size || 6) * scaleFactor);
+      ctx.strokeStyle = stroke.tool === 'eraser' ? '#0f172a' : stroke.color || '#ffffff';
+      ctx.beginPath();
+      if (pts.length === 1) {
+        ctx.arc(pts[0].x * width, pts[0].y * height, ctx.lineWidth / 2, 0, Math.PI * 2);
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.fill();
+      } else {
+        ctx.moveTo(pts[0].x * width, pts[0].y * height);
+        for (let i = 1; i < pts.length; i++) {
+          const prev = pts[i - 1];
+          const curr = pts[i];
+          const midX = ((prev.x + curr.x) / 2) * width;
+          const midY = ((prev.y + curr.y) / 2) * height;
+          ctx.quadraticCurveTo(prev.x * width, prev.y * height, midX, midY);
+        }
+        const last = pts[pts.length - 1];
+        ctx.lineTo(last.x * width, last.y * height);
+        ctx.stroke();
+      }
+      ctx.restore();
+    };
+
+    const redrawDrawingCanvas = () => {
+      const canvas = $('drawing-canvas');
+      if (!canvas || canvas.width === 0 || canvas.height === 0) return;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#0f172a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      for (const s of state.strokes) {
+        renderStrokeOnCtx(ctx, s, canvas.width, canvas.height);
+      }
+      if (state.activeStroke) {
+        renderStrokeOnCtx(ctx, state.activeStroke, canvas.width, canvas.height);
+      }
+    };
+
+    const resizeDrawingCanvas = () => {
+      const container = $('canvas-container');
+      const canvas = $('drawing-canvas');
+      if (!container || !canvas || container.offsetWidth === 0) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = Math.max(260, Math.floor(container.clientWidth));
+      const h = Math.max(220, Math.floor(container.clientHeight));
+      if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
+      }
+      redrawDrawingCanvas();
+    };
+
+    const canCurrentUserDraw = () => {
+      return Boolean(
+        state.room &&
+          state.room.status === 'playing' &&
+          state.room.currentRound?.mode !== 'modeA' &&
+          state.room.currentRound?.hintGiverId === state.user?.uid
+      );
+    };
+
+    const commitStrokeToSync = async (strokeObj) => {
+      if (!state.activeRoomCode) return;
+      await backend.transact('canvas', state.activeRoomCode, (existing) => {
+        const prev = existing?.strokes || [];
+        const idx = prev.findIndex((s) => s.id === strokeObj.id);
+        const next = idx >= 0 ? prev.map((s, i) => (i === idx ? strokeObj : s)) : [...prev, strokeObj];
+        return { set: { strokes: next.slice(-140), updatedAt: Date.now() } };
+      });
+    };
+
+    const setupCanvasListeners = () => {
+      const canvas = $('drawing-canvas');
+      const container = $('canvas-container');
+
+      const getPoint = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const src = e.touches?.[0] || e.changedTouches?.[0] || e;
+        return {
+          x: Math.max(0, Math.min(1, (src.clientX - rect.left) / rect.width)),
+          y: Math.max(0, Math.min(1, (src.clientY - rect.top) / rect.height)),
+        };
+      };
+
+      const onStart = (e) => {
+        if (!canCurrentUserDraw()) return;
+        if (e.cancelable) e.preventDefault();
+        const pt = getPoint(e);
+        state.activeStroke = {
+          id: `s_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          tool: state.drawTool,
+          color: state.drawTool === 'eraser' ? '#0f172a' : state.drawColor,
+          size: state.drawTool === 'eraser' ? state.drawSize * 2 : state.drawSize,
+          points: [pt],
+        };
+        state.isDrawing = true;
+        redrawDrawingCanvas();
+      };
+
+      const onMove = (e) => {
+        if (!canCurrentUserDraw() || !state.isDrawing || !state.activeStroke) return;
+        if (e.cancelable) e.preventDefault();
+        const pt = getPoint(e);
+        const pts = state.activeStroke.points;
+        const prev = pts[pts.length - 1];
+        if (Math.hypot(pt.x - prev.x, pt.y - prev.y) < 0.004) return;
+        pts.push(pt);
+        redrawDrawingCanvas();
+
+        const now = Date.now();
+        if (now - state.lastStreamAt > 250) {
+          state.lastStreamAt = now;
+          commitStrokeToSync({
+            id: state.activeStroke.id,
+            tool: state.activeStroke.tool,
+            color: state.activeStroke.color,
+            size: state.activeStroke.size,
+            pts: serializePoints(pts),
+          });
+        }
+      };
+
+      const onEnd = (e) => {
+        if (!state.isDrawing || !state.activeStroke) return;
+        if (e && e.cancelable) e.preventDefault();
+        const finished = state.activeStroke;
+        state.activeStroke = null;
+        state.isDrawing = false;
+        commitStrokeToSync({
+          id: finished.id,
+          tool: finished.tool,
+          color: finished.color,
+          size: finished.size,
+          pts: serializePoints(finished.points),
+        });
+      };
+
+      canvas.addEventListener('mousedown', onStart);
+      canvas.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onEnd);
+      canvas.addEventListener('touchstart', onStart, { passive: false });
+      canvas.addEventListener('touchmove', onMove, { passive: false });
+      canvas.addEventListener('touchend', onEnd, { passive: false });
+
+      if (typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver(resizeDrawingCanvas).observe(container);
+      }
+      window.addEventListener('resize', resizeDrawingCanvas);
+    };
+
+    // =========================================================================
+    // 7. FEED MESSAGES & FLOATING EMOJI REACTIONS
+    // =========================================================================
+    const appendFeedMessage = async (roomCode, msgObj) => {
+      try {
+        await backend.transact('feed', roomCode, (existing) => {
+          const prev = existing?.messages || [];
+          const next = [...prev.slice(-79), msgObj];
+          if (existing) return { update: { messages: next } };
+          return { set: { messages: next, reactions: [] } };
+        });
+      } catch (err) {
+        console.error('Feed append error:', err);
+      }
+    };
+
+    const sendReaction = async (emoji) => {
+      if (!state.activeRoomCode || !state.user) return;
+      soundEngine.play('click');
+      const myName = state.room?.players?.[state.user.uid]?.name || state.username;
+      const rx = {
+        id: `rx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        emoji,
+        senderName: myName,
+        ts: Date.now(),
+      };
+      try {
+        await backend.transact('feed', state.activeRoomCode, (existing) => {
+          const prev = existing?.reactions || [];
+          const next = [...prev.slice(-19), rx];
+          if (existing) return { update: { reactions: next } };
+          return { set: { messages: [], reactions: next } };
+        });
+      } catch (err) {
+        console.error('Reaction error:', err);
+      }
+    };
+
+    const spawnFloatingEmoji = (rx) => {
+      const layer = $('reactions-layer');
+      const el = document.createElement('div');
+      el.className = 'absolute animate-float-emoji flex flex-col items-center';
+      el.style.left = `${12 + Math.random() * 76}%`;
+      el.style.bottom = '14%';
+      el.innerHTML = `
+        <span class="text-4xl drop-shadow-[0_4px_12px_rgba(0,0,0,0.6)]">${escapeHtml(rx.emoji)}</span>
+        <span class="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-900/80 text-white border border-white/15 shadow">${escapeHtml(rx.senderName)}</span>
+      `;
+      layer.appendChild(el);
+      setTimeout(() => el.remove(), 2500);
+    };
+
+    // =========================================================================
+    // 8. CORE GAME ENGINE (TURNS, SETUP, GUESSING, SCORING, BOTS, TIMER)
+    // =========================================================================
+    const buildNextRoundData = (roomData, nextRoundNumber) => {
+      const playerIds = Object.keys(roomData.players || {});
+      let queue = Array.isArray(roomData.turnQueue)
+        ? roomData.turnQueue.filter((id) => playerIds.includes(id))
+        : [];
+      const lastHG = roomData.currentRound?.hintGiverId || null;
+
+      if (queue.length === 0) {
+        queue = shuffleArray(playerIds);
+        if (queue.length >= 2 && queue[0] === lastHG) {
+          const swapIdx = 1 + Math.floor(Math.random() * (queue.length - 1));
+          [queue[0], queue[swapIdx]] = [queue[swapIdx], queue[0]];
+        }
+      }
+
+      const nextHG = queue[0];
+      const remainingQueue = queue.slice(1);
+      const mode = resolveRoundMode(roomData.settings?.mode || 'mixed', nextRoundNumber);
+      const wordChoices = mode === 'modeC' ? generateModeCChoices() : [];
+
+      return {
+        turnQueue: remainingQueue,
+        currentRound: {
+          roundNumber: nextRoundNumber,
+          mode,
+          hintGiverId: nextHG,
+          secretEncoded: '',
+          category: '',
+          difficulty: roomData.settings?.difficulty || 'medium',
+          bonusPoints: 0,
+          digitCount: 2,
+          wordLength: 0,
+          firstLetter: '',
+          firstLetterRevealed: false,
+          clues: [],
+          enableHighLow: true,
+          wordChoices,
+          correctGuessers: {},
+          roundPoints: {},
+          hintGiverAwarded: false,
+          endReason: '',
+          phaseEndsAt: Date.now() + CHOOSING_DURATION_SEC * 1000,
+          roundStartedAt: null,
+        },
+      };
+    };
+
+    const submitRoundSetup = async ({ secret, digitCount = 0, category = '', difficulty = 'medium', bonusPoints = 0 }) => {
+      if (!state.room || !state.activeRoomCode) return;
+      const clean = String(secret).trim();
+      const now = Date.now();
+      try {
+        await backend.setDocData('canvas', state.activeRoomCode, {
+          roundNumber: state.room.currentRound.roundNumber,
+          strokes: [],
+          updatedAt: now,
+        });
+        await backend.updateDocData('rooms', state.activeRoomCode, {
+          status: 'playing',
+          'currentRound.secretEncoded': encodeSecret(clean),
+          'currentRound.digitCount': digitCount,
+          'currentRound.category': category,
+          'currentRound.difficulty': difficulty,
+          'currentRound.bonusPoints': bonusPoints,
+          'currentRound.wordLength': clean.replace(/\s/g, '').length,
+          'currentRound.firstLetter': clean[0] || '',
+          'currentRound.firstLetterRevealed': false,
+          'currentRound.clues': [],
+          'currentRound.roundStartedAt': now,
+          'currentRound.phaseEndsAt': now + ROUND_DURATION_SEC * 1000,
+        });
+        const hgName = state.room.players?.[state.room.currentRound.hintGiverId]?.name || 'Hint Giver';
+        await appendFeedMessage(state.activeRoomCode, {
+          id: `sys_${now}`,
+          type: 'system',
+          text: `Round ${state.room.currentRound.roundNumber} started! ${hgName} is giving clues — 120s on the clock!`,
+          ts: now,
+        });
+      } catch (err) {
+        console.error('Submit setup error:', err);
+      }
+    };
+
+    const finalizeCurrentRound = async (endReason = 'time_over') => {
+      if (!state.activeRoomCode || state.transitionLocked) return;
+      state.transitionLocked = true;
+      try {
+        await backend.transact('rooms', state.activeRoomCode, (data) => {
+          if (!data || data.status !== 'playing') return null;
+          const round = data.currentRound;
+          const players = { ...(data.players || {}) };
+          const correctMap = round.correctGuessers || {};
+          const solvedList = Object.values(correctMap).sort((a, b) => a.rank - b.rank);
+          const roundPoints = { ...(round.roundPoints || {}) };
+
+          for (const pid of Object.keys(players)) {
+            if (pid === round.hintGiverId) continue;
+            if (!correctMap[pid]) players[pid] = { ...players[pid], streak: 0 };
+          }
+
+          if (solvedList.length > 0 && !round.hintGiverAwarded && players[round.hintGiverId]) {
+            const hg = players[round.hintGiverId];
+            players[round.hintGiverId] = {
+              ...hg,
+              score: (hg.score || 0) + 50,
+              hintGiverPoints: (hg.hintGiverPoints || 0) + 50,
+            };
+            roundPoints[round.hintGiverId] = 50;
+          }
+
+          const answerText = decodeSecret(round.secretEncoded);
+          const fastest = solvedList[0] || null;
+          const historyEntry = {
+            roundNumber: round.roundNumber,
+            mode: round.mode,
+            hintGiverName: players[round.hintGiverId]?.name || 'Unknown',
+            answer: answerText,
+            solvedCount: solvedList.length,
+            fastestPlayer: fastest ? fastest.name : null,
+            fastestTimeSec: fastest ? fastest.timeTakenSec : null,
+          };
+
+          return {
+            update: {
+              status: 'round_end',
+              players,
+              'currentRound.endReason': endReason,
+              'currentRound.roundPoints': roundPoints,
+              'currentRound.hintGiverAwarded': solvedList.length > 0,
+              'currentRound.phaseEndsAt': Date.now() + ROUND_END_DURATION_SEC * 1000,
+              gameHistory: [...(data.gameHistory || []), historyEntry],
+            },
+          };
+        });
+      } catch (err) {
+        console.error('Finalize round error:', err);
+      } finally {
+        setTimeout(() => {
+          state.transitionLocked = false;
+        }, 800);
+      }
+    };
+
+    const advanceToNextRound = async () => {
+      if (!state.activeRoomCode || state.transitionLocked) return;
+      state.transitionLocked = true;
+      try {
+        await backend.transact('rooms', state.activeRoomCode, (data) => {
+          if (!data || data.status !== 'round_end') return null;
+          const totalRounds = data.settings?.totalRounds || 5;
+          const nextNum = (data.currentRound?.roundNumber || 1) + 1;
+          if (nextNum > totalRounds) {
+            return { update: { status: 'game_over' } };
+          }
+          const next = buildNextRoundData(data, nextNum);
+          return {
+            update: {
+              status: 'choosing',
+              turnQueue: next.turnQueue,
+              currentRound: next.currentRound,
+            },
+          };
+        });
+        await backend.setDocData('canvas', state.activeRoomCode, { strokes: [], updatedAt: Date.now() });
+      } catch (err) {
+        console.error('Advance round error:', err);
+      } finally {
+        setTimeout(() => {
+          state.transitionLocked = false;
+        }, 800);
+      }
+    };
+
+    const submitGuessOrChat = async (playerId, playerName, rawText) => {
+      const r = state.room;
+      if (!r || !state.activeRoomCode) return;
+      const text = String(rawText).trim();
+      if (!text) return;
+
+      const round = r.currentRound;
+      const isPlaying = r.status === 'playing';
+      const isHG = round?.hintGiverId === playerId;
+      const alreadySolved = Boolean(round?.correctGuessers?.[playerId]);
+      const secret = isPlaying ? decodeSecret(round.secretEncoded) : '';
+
+      // Prevent leaking secret answer by Hint Giver or solved players
+      if (isPlaying && (isHG || alreadySolved)) {
+        if (secret && text.toLowerCase().includes(secret.toLowerCase())) {
+          if (playerId === state.user?.uid) showCloseToast('⚠️ Shh! Don’t spoil the secret answer!');
+          return;
+        }
+        await appendFeedMessage(state.activeRoomCode, {
+          id: `m_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+          type: 'chat',
+          senderId: playerId,
+          senderName: playerName,
+          text,
+          ts: Date.now(),
+        });
+        return;
+      }
+
+      // Active Guesser Evaluation
+      if (isPlaying && !isHG && !alreadySolved && secret) {
+        const isCorrect =
+          round.mode === 'modeA'
+            ? parseInt(text, 10) === parseInt(secret, 10)
+            : text.toLowerCase() === secret.toLowerCase();
+
+        if (isCorrect) {
+          const result = await backend.transact('rooms', state.activeRoomCode, (data) => {
+            if (!data || data.status !== 'playing') return null;
+            const curRound = data.currentRound;
+            if (curRound.correctGuessers && curRound.correctGuessers[playerId]) return null;
+
+            const now = Date.now();
+            const remSec = Math.max(1, Math.ceil((curRound.phaseEndsAt - now) / 1000));
+            const timeTakenSec = Math.max(1, Math.round((now - (curRound.roundStartedAt || now - 1000)) / 1000));
+            const rank = Object.keys(curRound.correctGuessers || {}).length + 1;
+            const player = data.players[playerId];
+            if (!player) return null;
+
+            const calc = calculateGuessPoints({
+              remainingSec: remSec,
+              placementRank: rank,
+              difficultyBonus: curRound.bonusPoints || 0,
+              previousStreak: player.streak || 0,
+              hintPenalty: curRound.firstLetterRevealed ? 15 : 0,
+            });
+
+            const newStreak = (player.streak || 0) + 1;
+            const updatedPlayers = {
+              ...data.players,
+              [playerId]: {
+                ...player,
+                score: (player.score || 0) + calc.total,
+                correctGuesses: (player.correctGuesses || 0) + 1,
+                streak: newStreak,
+                bestStreak: Math.max(player.bestStreak || 0, newStreak),
+                fastestGuessSec:
+                  player.fastestGuessSec == null ? timeTakenSec : Math.min(player.fastestGuessSec, timeTakenSec),
+              },
+            };
+
+            const updatedRoundPoints = { ...(curRound.roundPoints || {}), [playerId]: calc.total };
+            let hgAwarded = Boolean(curRound.hintGiverAwarded);
+            if (!hgAwarded && updatedPlayers[curRound.hintGiverId]) {
+              const hg = updatedPlayers[curRound.hintGiverId];
+              updatedPlayers[curRound.hintGiverId] = {
+                ...hg,
+                score: (hg.score || 0) + 50,
+                hintGiverPoints: (hg.hintGiverPoints || 0) + 50,
+              };
+              updatedRoundPoints[curRound.hintGiverId] = 50;
+              hgAwarded = true;
+            }
+
+            const updatedCorrect = {
+              ...(curRound.correctGuessers || {}),
+              [playerId]: { id: playerId, name: playerName, rank, points: calc.total, timeTakenSec },
+            };
+
+            const totalGuessers = Math.max(1, Object.keys(updatedPlayers).length - 1);
+            const allSolved = Object.keys(updatedCorrect).length >= totalGuessers;
+
+            return {
+              update: {
+                players: updatedPlayers,
+                'currentRound.correctGuessers': updatedCorrect,
+                'currentRound.roundPoints': updatedRoundPoints,
+                'currentRound.hintGiverAwarded': hgAwarded,
+              },
+              returnValue: { pts: calc.total, allSolved },
+            };
+          });
+
+          if (result) {
+            soundEngine.play('correct');
+            await appendFeedMessage(state.activeRoomCode, {
+              id: `ok_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+              type: 'correct',
+              text: `${playerName} guessed the answer! (+${result.pts} pts)`,
+              ts: Date.now(),
+            });
+            if (result.allSolved) {
+              setTimeout(() => finalizeCurrentRound('all_guessed'), 450);
+            }
+          }
+          return;
+        }
+
+        // Wrong guess
+        if (playerId === state.user?.uid) soundEngine.play('wrong');
+
+        let direction = null;
+        if (round.mode === 'modeA') {
+          const gNum = parseInt(text, 10);
+          const tNum = parseInt(secret, 10);
+          if (!isNaN(gNum) && !isNaN(tNum)) {
+            if (round.enableHighLow !== false) direction = gNum < tNum ? 'higher' : 'lower';
+            if (playerId === state.user?.uid && Math.abs(gNum - tNum) <= 5) {
+              showCloseToast('🔥 So close! Within 5!');
+            }
+          }
+        } else if (playerId === state.user?.uid && editDistance(text, secret) <= 2) {
+          showCloseToast('🔥 So close! Check your spelling!');
+        }
+
+        await appendFeedMessage(state.activeRoomCode, {
+          id: `g_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+          type: 'guess',
+          roundNumber: round.roundNumber,
+          senderId: playerId,
+          senderName: playerName,
+          text,
+          direction,
+          ts: Date.now(),
+        });
+        return;
+      }
+
+      // Regular Lobby or Round-End Chat
+      await appendFeedMessage(state.activeRoomCode, {
+        id: `c_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+        type: 'chat',
+        senderId: playerId,
+        senderName: playerName,
+        text,
+        ts: Date.now(),
+      });
+    };
+
+    // =========================================================================
+    // 9. PRACTICE BOT AI SCHEDULER (HOST-DRIVEN)
+    // =========================================================================
+    const clearBotTimers = () => {
+      state.botTimers.forEach((id) => {
+        clearTimeout(id);
+        clearInterval(id);
+      });
+      state.botTimers = [];
+    };
+
+    const scheduleBotsForPhase = () => {
+      clearBotTimers();
+      const r = state.room;
+      if (!r || !state.user || r.hostId !== state.user.uid) return;
+      const bots = Object.values(r.players || {}).filter((p) => p.isBot);
+      if (bots.length === 0 || !r.currentRound) return;
+      const round = r.currentRound;
+
+      if (r.status === 'choosing') {
+        const hgBot = bots.find((b) => b.id === round.hintGiverId);
+        if (!hgBot) return;
+        const tid = setTimeout(() => {
+          if (state.room?.status !== 'choosing') return;
+          if (round.mode === 'modeA') {
+            const min = r.settings?.numberMin ?? 1;
+            const max = r.settings?.numberMax ?? 100;
+            const num = Math.floor(Math.random() * (max - min + 1)) + min;
+            submitRoundSetup({
+              secret: String(num),
+              digitCount: String(Math.abs(num)).length,
+              category: 'Numbers',
+              difficulty: r.settings?.difficulty || 'medium',
+              bonusPoints: 0,
+            });
+          } else if (round.mode === 'modeC' && round.wordChoices?.length) {
+            const pick = round.wordChoices[Math.floor(Math.random() * round.wordChoices.length)];
+            submitRoundSetup({
+              secret: pick.word,
+              category: pick.category,
+              difficulty: pick.difficulty,
+              bonusPoints: pick.bonus,
+            });
+          } else {
+            const cat = CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];
+            const pick = pickRandomWord(cat, r.settings?.difficulty || 'medium');
+            submitRoundSetup({
+              secret: pick.word,
+              category: pick.category,
+              difficulty: pick.difficulty,
+              bonusPoints: pick.bonus,
+            });
+          }
+        }, 2300);
+        state.botTimers.push(tid);
+      } else if (r.status === 'playing') {
+        const hgBot = bots.find((b) => b.id === round.hintGiverId);
+        if (hgBot) {
+          let step = 0;
+          const iv = setInterval(async () => {
+            const cur = state.room;
+            if (!cur || cur.status !== 'playing') return;
+            const secret = decodeSecret(cur.currentRound.secretEncoded);
+            step += 1;
+
+            if (cur.currentRound.mode === 'modeA') {
+              const val = parseInt(secret, 10);
+              if (isNaN(val)) return;
+              let text = '';
+              if (step === 1) text = val % 2 === 0 ? 'Number is EVEN' : 'Number is ODD';
+              else if (step === 2) text = `Greater than ${Math.max(0, val - 15)}`;
+              else if (step === 3) text = `Less than ${val + 12}`;
+              else if (step === 4) text = `Between ${Math.max(1, val - 6)} and ${val + 6}`;
+              if (text) {
+                const existing = cur.currentRound.clues || [];
+                if (!existing.some((c) => c.text === text)) {
+                  await backend.updateDocData('rooms', state.activeRoomCode, {
+                    'currentRound.clues': [...existing, { id: `bc_${Date.now()}`, type: 'bot', text }],
+                  });
+                }
+              }
+            } else {
+              // Playful geometric vector strokes
+              const cx = 0.25 + Math.random() * 0.5;
+              const cy = 0.25 + Math.random() * 0.5;
+              const rad = 0.08 + Math.random() * 0.14;
+              const pts = [];
+              for (let a = 0; a <= 12; a++) {
+                const ang = (a / 12) * Math.PI * 2;
+                pts.push({
+                  x: Math.max(0.05, Math.min(0.95, cx + Math.cos(ang) * rad)),
+                  y: Math.max(0.05, Math.min(0.95, cy + Math.sin(ang) * rad)),
+                });
+              }
+              await commitStrokeToSync({
+                id: `bs_${Date.now()}`,
+                tool: 'pencil',
+                color: DRAW_COLORS[2 + (step % 8)],
+                size: 7,
+                pts: serializePoints(pts),
+              });
+              if (step === 4 && !cur.currentRound.firstLetterRevealed) {
+                await backend.updateDocData('rooms', state.activeRoomCode, {
+                  'currentRound.firstLetterRevealed': true,
+                });
+              }
+            }
+          }, 5200);
+          state.botTimers.push(iv);
+        }
+
+        // Bot Guessers
+        const guessIv = setInterval(() => {
+          const cur = state.room;
+          if (!cur || cur.status !== 'playing') return;
+          const secret = decodeSecret(cur.currentRound.secretEncoded);
+          const guessers = bots.filter(
+            (b) => b.id !== cur.currentRound.hintGiverId && !cur.currentRound.correctGuessers?.[b.id]
+          );
+          if (guessers.length === 0) return;
+
+          const bot = guessers[Math.floor(Math.random() * guessers.length)];
+          const elapsed = (Date.now() - (cur.currentRound.roundStartedAt || Date.now())) / 1000;
+          const solveChance = elapsed > 50 ? 0.45 : elapsed > 25 ? 0.22 : 0.08;
+
+          if (Math.random() < solveChance) {
+            submitGuessOrChat(bot.id, bot.name, secret);
+          } else if (cur.currentRound.mode === 'modeA') {
+            const min = cur.settings?.numberMin ?? 1;
+            const max = cur.settings?.numberMax ?? 100;
+            submitGuessOrChat(bot.id, bot.name, String(Math.floor(Math.random() * (max - min + 1)) + min));
+          } else {
+            const pick = pickRandomWord(cur.currentRound.category || 'Animals', 'easy').word;
+            submitGuessOrChat(bot.id, bot.name, pick);
+          }
+        }, 7200);
+        state.botTimers.push(guessIv);
+      }
+    };
+
+    // =========================================================================
+    // 10. SYNCHRONIZED COUNTDOWN TIMER ENGINE
+    // =========================================================================
+    const updateTimerDisplay = () => {
+      const r = state.room;
+      if (!r || !['choosing', 'playing', 'round_end'].includes(r.status) || !r.currentRound?.phaseEndsAt) {
+        return;
+      }
+      const msLeft = r.currentRound.phaseEndsAt - Date.now();
+      const secLeft = Math.max(0, Math.ceil(msLeft / 1000));
+      state.remainingSec = secLeft;
+
+      // Update HUD Timer Text & Progress Bar
+      $('hud-timer-text').textContent = formatClock(secLeft);
+      $('choosing-sec-left').textContent = String(secLeft);
+
+      const totalSec =
+        r.status === 'choosing'
+          ? CHOOSING_DURATION_SEC
+          : r.status === 'round_end'
+          ? ROUND_END_DURATION_SEC
+          : ROUND_DURATION_SEC;
+      const pct = Math.max(0, Math.min(100, (secLeft / totalSec) * 100));
+      const bar = $('hud-timer-bar');
+      const box = $('hud-timer-box');
+      bar.style.width = `${pct}%`;
+
+      const warnBanner = $('timer-warning-banner');
+      const finalFive = $('final-five-overlay');
+
+      if (r.status === 'playing') {
+        if (secLeft !== state.lastWarnSec) {
+          state.lastWarnSec = secLeft;
+          if (secLeft === 30) soundEngine.play('warn30');
+          else if (secLeft === 10) soundEngine.play('warn10');
+          else if (secLeft <= 5 && secLeft >= 1) soundEngine.play('tick');
+        }
+
+        if (secLeft <= 10) {
+          bar.className = 'h-full bg-gradient-to-r from-rose-500 to-red-600 transition-all duration-300';
+          box.className = 'px-4 py-1.5 rounded-2xl bg-slate-950/90 border border-rose-500/50 flex items-center gap-2 font-mono-game text-xl sm:text-2xl font-black text-rose-400 animate-pulse shadow-inner';
+        } else if (secLeft <= 30) {
+          bar.className = 'h-full bg-gradient-to-r from-amber-400 to-orange-500 transition-all duration-300';
+          box.className = 'px-4 py-1.5 rounded-2xl bg-slate-950/90 border border-amber-400/40 flex items-center gap-2 font-mono-game text-xl sm:text-2xl font-black text-amber-300 shadow-inner';
+        } else {
+          bar.className = 'h-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all duration-300';
+          box.className = 'px-4 py-1.5 rounded-2xl bg-slate-950/90 border border-white/15 flex items-center gap-2 font-mono-game text-xl sm:text-2xl font-black text-emerald-300 shadow-inner';
+        }
+
+        if (secLeft <= 5 && secLeft > 0) {
+          finalFive.classList.remove('hidden');
+          $('final-five-num').textContent = String(secLeft);
+          warnBanner.classList.add('hidden');
+        } else if (secLeft <= 30 && secLeft > 5) {
+          finalFive.classList.add('hidden');
+          warnBanner.classList.remove('hidden');
+          if (secLeft <= 10) {
+            warnBanner.className = 'px-4 py-2 rounded-2xl text-center text-xs font-black uppercase tracking-widest border bg-rose-500/20 border-rose-400/50 text-rose-200 animate-pulse';
+            warnBanner.textContent = '⚠️ Final 10 Seconds! Hurry Up!';
+          } else {
+            warnBanner.className = 'px-4 py-2 rounded-2xl text-center text-xs font-black uppercase tracking-widest border bg-amber-500/15 border-amber-400/40 text-amber-200';
+            warnBanner.textContent = '⏳ 30 Seconds Remaining!';
+          }
+        } else {
+          finalFive.classList.add('hidden');
+          warnBanner.classList.add('hidden');
+        }
+      } else {
+        finalFive.classList.add('hidden');
+        warnBanner.classList.add('hidden');
+        bar.className = 'h-full bg-gradient-to-r from-violet-400 to-cyan-400 transition-all duration-300';
+        box.className = 'px-4 py-1.5 rounded-2xl bg-slate-950/90 border border-white/15 flex items-center gap-2 font-mono-game text-xl sm:text-2xl font-black text-cyan-300 shadow-inner';
+      }
+
+      if (r.status === 'round_end') {
+        const isLast = (r.currentRound?.roundNumber || 1) >= (r.settings?.totalRounds || 5);
+        $('btn-advance-round').textContent = isLast ? '🏆 View Final Podium' : `Next Round (${secLeft}s)`;
+        $('round-end-wait-msg').textContent = isLast
+          ? `Final podium loading in ${secLeft}s...`
+          : `Next round starting automatically in ${secLeft}s...`;
+      }
+
+      // Authoritative automatic phase transitions at 0s (Host primary, non-host fallback after 1.8s)
+      const isHost = state.user && r.hostId === state.user.uid;
+      const shouldTransition = isHost ? msLeft <= 0 : msLeft <= -1800;
+
+      if (shouldTransition && !state.transitionLocked) {
+        if (r.status === 'choosing') {
+          const mode = r.currentRound.mode;
+          if (mode === 'modeA') {
+            const min = r.settings?.numberMin ?? 1;
+            const max = r.settings?.numberMax ?? 100;
+            const rand = Math.floor(Math.random() * (max - min + 1)) + min;
+            submitRoundSetup({
+              secret: String(rand),
+              digitCount: String(Math.abs(rand)).length,
+              category: 'Numbers',
+              difficulty: r.settings?.difficulty || 'medium',
+              bonusPoints: 0,
+            });
+          } else if (mode === 'modeC' && r.currentRound.wordChoices?.length) {
+            const c = r.currentRound.wordChoices[0];
+            submitRoundSetup({ secret: c.word, category: c.category, difficulty: c.difficulty, bonusPoints: c.bonus });
+          } else {
+            const cat = CATEGORIES[Math.floor(Math.random() * CATEGORIES.length)];
+            const pick = pickRandomWord(cat, r.settings?.difficulty || 'medium');
+            submitRoundSetup({ secret: pick.word, category: pick.category, difficulty: pick.difficulty, bonusPoints: pick.bonus });
+          }
+        } else if (r.status === 'playing') {
+          finalizeCurrentRound('time_over');
+        } else if (r.status === 'round_end') {
+          advanceToNextRound();
+        }
+      }
+    };
+
+    // =========================================================================
+    // 11. REAL-TIME SUBSCRIPTION MANAGER
+    // =========================================================================
+    const detachRoomListeners = () => {
+      state.unsubs.forEach((fn) => fn());
+      state.unsubs = [];
+      clearInterval(state.heartbeatTimer);
+      clearInterval(state.clockTimer);
+      clearBotTimers();
+    };
+
+    const attachRoomListeners = (roomCode) => {
+      detachRoomListeners();
+      state.activeRoomCode = roomCode;
+      state.prevPlayerCount = 0;
+      state.prevPhase = null;
+      state.prevRoundNum = 0;
+
+      const uRoom = backend.subscribe('rooms', roomCode, (data) => {
+        if (!data) {
+          detachRoomListeners();
+          state.activeRoomCode = null;
+          state.room = null;
+          saveCurrentProfile({ activeRoomCode: null });
+          setHomeError('This room has been closed.');
+          renderApp();
+          return;
+        }
+        if (!data.players || !data.players[state.user.uid]) {
+          detachRoomListeners();
+          state.activeRoomCode = null;
+          state.room = null;
+          saveCurrentProfile({ activeRoomCode: null });
+          setHomeError('You are no longer in that room.');
+          renderApp();
+          return;
+        }
+
+        // Audio cues on state changes
+        const pCount = Object.keys(data.players || {}).length;
+        if (state.prevPlayerCount > 0 && pCount > state.prevPlayerCount) soundEngine.play('join');
+        state.prevPlayerCount = pCount;
+
+        const rNum = data.currentRound?.roundNumber || 0;
+        const phaseChanged = state.prevPhase !== data.status;
+        const roundChanged = rNum !== state.prevRoundNum;
+
+        if (state.prevPhase && phaseChanged) {
+          if (data.status === 'choosing') {
+            soundEngine.play(state.prevPhase === 'lobby' ? 'roomStart' : 'playerSelect');
+          } else if (data.status === 'playing') {
+            soundEngine.play('roundStart');
+            state.lastWarnSec = -1;
+          } else if (data.status === 'round_end' && data.currentRound?.endReason === 'time_over') {
+            soundEngine.play('timeOver');
+          } else if (data.status === 'game_over') {
+            soundEngine.play('winner');
+            setTimeout(() => soundEngine.play('victory'), 350);
+          }
+        } else if (roundChanged && data.status === 'choosing') {
+          soundEngine.play('playerSelect');
+        }
+
+        if (phaseChanged || roundChanged) {
+          // Reset setup form inputs cleanly only when a new round/phase starts
+          $('input-setup-num').value = '';
+          $('input-setup-word').value = '';
+          $('choosing-error').classList.add('hidden');
+          $('num-clue-error').classList.add('hidden');
+          state.setupDigits = 2;
+          state.setupCategory = 'Animals';
+          state.showSecretNum = true;
+        }
+
+        state.prevPhase = data.status;
+        state.prevRoundNum = rNum;
+        state.room = data;
+
+        renderApp();
+        if (phaseChanged || roundChanged) {
+          scheduleBotsForPhase();
+        }
+      });
+
+      const uCanvas = backend.subscribe('canvas', roomCode, (data) => {
+        state.strokes = data?.strokes || [];
+        redrawDrawingCanvas();
+      });
+
+      const uFeed = backend.subscribe('feed', roomCode, (data) => {
+        if (!data) return;
+        state.messages = data.messages || [];
+        renderChatFeeds();
+        renderNumberGuessTracker();
+
+        const reactions = data.reactions || [];
+        for (const rx of reactions) {
+          if (!state.seenReactions.has(rx.id) && Date.now() - rx.ts < 5000) {
+            state.seenReactions.add(rx.id);
+            spawnFloatingEmoji(rx);
+          }
+        }
+      });
+
+      state.unsubs = [uRoom, uCanvas, uFeed];
+
+      // Presence heartbeat every 15s
+      state.heartbeatTimer = setInterval(() => {
+        if (!state.activeRoomCode || !state.user) return;
+        backend.updateDocData('rooms', state.activeRoomCode, {
+          [`players.${state.user.uid}.lastSeen`]: Date.now(),
+        }).catch(() => {});
+      }, 15000);
+
+      // Synchronized countdown loop every 250ms
+      state.clockTimer = setInterval(updateTimerDisplay, 250);
+    };
+
+    // =========================================================================
+    // 12. ROOM MANAGEMENT ACTIONS
+    // =========================================================================
+    const createRoom = async () => {
+      if (!state.user) return;
+      soundEngine.play('click');
+      setHomeError('');
+      const cleanName = ($('input-username').value || '').trim() || state.username || 'Player';
+      state.username = cleanName;
+      const code = generateRoomCode();
+      const now = Date.now();
+
+      const newRoom = {
+        roomCode: code,
+        hostId: state.user.uid,
+        status: 'lobby',
+        createdAt: now,
+        settings: {
+          mode: 'mixed',
+          difficulty: 'medium',
+          totalRounds: 5,
+          numberMin: 1,
+          numberMax: 100,
+          restrictChat: false,
+        },
+        players: {
+          [state.user.uid]: {
+            id: state.user.uid,
+            name: cleanName,
+            avatarId: state.avatarId,
+            isBot: false,
+            score: 0,
+            correctGuesses: 0,
+            streak: 0,
+            bestStreak: 0,
+            fastestGuessSec: null,
+            hintGiverPoints: 0,
+            joinedAt: now,
+            lastSeen: now,
+          },
+        },
+        turnQueue: [],
+        currentRound: null,
+        gameHistory: [],
+      };
+
+      try {
+        await backend.setDocData('rooms', code, newRoom);
+        await backend.setDocData('canvas', code, { strokes: [], updatedAt: now });
+        await backend.setDocData('feed', code, {
+          messages: [{
+            id: `sys_${now}`,
+            type: 'system',
+            text: `${cleanName} created room ${code}! Share the code to invite friends.`,
+            ts: now,
+          }],
+          reactions: [],
+        });
+        state.reconnectRoomCode = null;
+        await saveCurrentProfile({ username: cleanName, avatarId: state.avatarId, activeRoomCode: code });
+        attachRoomListeners(code);
+        soundEngine.play('join');
+      } catch (err) {
+        console.error('Create room error:', err);
+        setHomeError('Could not create room. Please try again.');
+      }
+    };
+
+    const joinRoom = async (rawCode) => {
+      if (!state.user) return;
+      const code = String(rawCode || '').trim().toUpperCase();
+      if (code.length < 4) return setHomeError('Please enter a valid 6-character room code.');
+      soundEngine.play('click');
+      setHomeError('');
+      const cleanName = ($('input-username').value || '').trim() || state.username || 'Player';
+      state.username = cleanName;
+
+      try {
+        // Ensure local channel fetches room if in offline fallback
+        await backend.getDocData('rooms', code);
+
+        const res = await backend.transact('rooms', code, (data) => {
+          if (!data) {
+            return { returnValue: { ok: false, error: `Room "${code}" not found. Double-check the code!` } };
+          }
+          const players = data.players || {};
+          if (players[state.user.uid]) {
+            return {
+              update: {
+                [`players.${state.user.uid}.name`]: cleanName,
+                [`players.${state.user.uid}.avatarId`]: state.avatarId,
+                [`players.${state.user.uid}.lastSeen`]: Date.now(),
+              },
+              returnValue: { ok: true, reconnected: true },
+            };
+          }
+          if (Object.keys(players).length >= MAX_PLAYERS) {
+            return { returnValue: { ok: false, error: 'Room is Full! Maximum 8 players allowed.' } };
+          }
+          const now = Date.now();
+          return {
+            update: {
+              [`players.${state.user.uid}`]: {
+                id: state.user.uid,
+                name: cleanName,
+                avatarId: state.avatarId,
+                isBot: false,
+                score: 0,
+                correctGuesses: 0,
+                streak: 0,
+                bestStreak: 0,
+                fastestGuessSec: null,
+                hintGiverPoints: 0,
+                joinedAt: now,
+                lastSeen: now,
+              },
+            },
+            returnValue: { ok: true, reconnected: false },
+          };
+        });
+
+        if (!res || !res.ok) {
+          setHomeError(res?.error || 'Unable to join room.');
+          return;
+        }
+        if (!res.reconnected) {
+          await appendFeedMessage(code, {
+            id: `j_${Date.now()}`,
+            type: 'system',
+            text: `${cleanName} joined the room!`,
+            ts: Date.now(),
+          });
+        }
+        state.reconnectRoomCode = null;
+        await saveCurrentProfile({ username: cleanName, avatarId: state.avatarId, activeRoomCode: code });
+        attachRoomListeners(code);
+        soundEngine.play('join');
+      } catch (err) {
+        console.error('Join room error:', err);
+        setHomeError('Failed to join room. Check your connection.');
+      }
+    };
+
+    const leaveRoom = async () => {
+      if (!state.user || !state.activeRoomCode) return;
+      soundEngine.play('click');
+      const code = state.activeRoomCode;
+      const myName = state.room?.players?.[state.user.uid]?.name || state.username;
+
+      try {
+        await backend.transact('rooms', code, (data) => {
+          if (!data) return null;
+          const players = { ...(data.players || {}) };
+          delete players[state.user.uid];
+          const remainingHumans = Object.values(players).filter((p) => !p.isBot);
+          let nextHostId = data.hostId;
+          if (data.hostId === state.user.uid && remainingHumans.length > 0) {
+            nextHostId = remainingHumans[0].id;
+          }
+          return { update: { players, hostId: nextHostId } };
+        });
+        await appendFeedMessage(code, {
+          id: `lv_${Date.now()}`,
+          type: 'system',
+          text: `${myName} left the room.`,
+          ts: Date.now(),
+        });
+      } catch (err) {
+        console.error('Leave error:', err);
+      }
+
+      detachRoomListeners();
+      stopConfetti();
+      state.activeRoomCode = null;
+      state.room = null;
+      state.strokes = [];
+      state.messages = [];
+      await saveCurrentProfile({ activeRoomCode: null });
+      renderApp();
+    };
+
+    const addPracticeBot = async () => {
+      const r = state.room;
+      if (!r || r.hostId !== state.user?.uid) return;
+      const existing = Object.values(r.players || {});
+      if (existing.length >= MAX_PLAYERS) return;
+      soundEngine.play('join');
+
+      const used = new Set(existing.map((p) => p.name));
+      const botName = BOT_NAMES.find((n) => !used.has(n)) || `Bot${Math.floor(10 + Math.random() * 89)}`;
+      const botId = `bot_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
+      const botAvatar = AVATARS[Math.floor(Math.random() * AVATARS.length)].id;
+      const now = Date.now();
+
+      await backend.updateDocData('rooms', state.activeRoomCode, {
+        [`players.${botId}`]: {
+          id: botId,
+          name: botName,
+          avatarId: botAvatar,
+          isBot: true,
+          score: 0,
+          correctGuesses: 0,
+          streak: 0,
+          bestStreak: 0,
+          fastestGuessSec: null,
+          hintGiverPoints: 0,
+          joinedAt: now,
+          lastSeen: now,
+        },
+      });
+    };
+
+    const kickPlayer = async (targetId) => {
+      const r = state.room;
+      if (!r || r.hostId !== state.user?.uid) return;
+      soundEngine.play('click');
+      const targetName = r.players?.[targetId]?.name || 'Player';
+      const updated = { ...(r.players || {}) };
+      delete updated[targetId];
+      await backend.updateDocData('rooms', state.activeRoomCode, { players: updated });
+      await appendFeedMessage(state.activeRoomCode, {
+        id: `k_${Date.now()}`,
+        type: 'system',
+        text: `${targetName} was removed from the room.`,
+        ts: Date.now(),
+      });
+    };
+
+    const updateRoomSettings = async (partial) => {
+      const r = state.room;
+      if (!r || r.hostId !== state.user?.uid) return;
+      await backend.updateDocData('rooms', state.activeRoomCode, {
+        settings: { ...(r.settings || {}), ...partial },
+      });
+    };
+
+    const startGame = async () => {
+      const r = state.room;
+      if (!r || r.hostId !== state.user?.uid) return;
+      if (Object.keys(r.players || {}).length < MIN_PLAYERS) return;
+      soundEngine.play('roomStart');
+
+      const resetPlayers = {};
+      for (const [pid, p] of Object.entries(r.players || {})) {
+        resetPlayers[pid] = {
+          ...p,
+          score: 0,
+          correctGuesses: 0,
+          streak: 0,
+          bestStreak: 0,
+          fastestGuessSec: null,
+          hintGiverPoints: 0,
+        };
+      }
+      const next = buildNextRoundData({ ...r, players: resetPlayers, turnQueue: [] }, 1);
+      await backend.setDocData('canvas', state.activeRoomCode, { strokes: [], updatedAt: Date.now() });
+      await backend.updateDocData('rooms', state.activeRoomCode, {
+        status: 'choosing',
+        players: resetPlayers,
+        turnQueue: next.turnQueue,
+        currentRound: next.currentRound,
+        gameHistory: [],
+      });
+    };
+
+    const returnToLobby = async () => {
+      const r = state.room;
+      if (!r || r.hostId !== state.user?.uid) return;
+      soundEngine.play('click');
+      await backend.updateDocData('rooms', state.activeRoomCode, { status: 'lobby', currentRound: null });
+    };
+
+    // =========================================================================
+    // 13. SURGICAL DOM RENDERERS (NO FOCUS LOSS ON INPUTS OR CANVAS)
+    // =========================================================================
+    const renderHome = () => {
+      $('home-selected-avatar').innerHTML = renderAvatarHtml(state.avatarId, 'md');
+      if (document.activeElement !== $('input-username')) {
+        $('input-username').value = state.username;
+      }
+
+      // Sync badge
+      const badge = $('sync-mode-badge');
+      if (backend.isCloud) {
+        badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span><span>Real-Time Cloud Sync Ready</span>`;
+      } else {
+        badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span><span>Local Multi-Tab + AI Bot Mode</span>`;
+      }
+
+      // Reconnection banner
+      if (state.reconnectRoomCode) {
+        $('reconnect-code-label').textContent = state.reconnectRoomCode;
+        $('reconnect-banner').classList.remove('hidden');
+      } else {
+        $('reconnect-banner').classList.add('hidden');
+      }
+
+      // Avatar Picker Grid
+      $('avatar-grid').innerHTML = AVATARS.map((av) => {
+        const selected = av.id === state.avatarId;
+        return `
+          <button type="button" data-pick-avatar="${av.id}" class="p-2 rounded-2xl flex flex-col items-center gap-1 transition transform ${
+            selected ? 'bg-white/15 ring-2 ring-cyan-400 scale-105 shadow-lg' : 'bg-white/5 hover:bg-white/10 opacity-80 hover:opacity-100'
+          }">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-br ${av.bg} flex items-center justify-center text-xl shadow">${av.emoji}</div>
+            <span class="text-[10px] font-bold text-slate-300 truncate w-full text-center">${escapeHtml(av.label.split(' ')[1])}</span>
+          </button>
+        `;
+      }).join('');
+    };
+
+    const renderLobby = () => {
+      const r = state.room;
+      const players = Object.values(r.players || {}).sort((a, b) => (a.joinedAt || 0) - (b.joinedAt || 0));
+      const isHost = r.hostId === state.user.uid;
+      const settings = r.settings || {};
+      const canStart = players.length >= MIN_PLAYERS;
+
+      $('lobby-room-code').textContent = r.roomCode;
+      $('lobby-count-badge').textContent = `LOBBY • ${players.length}/${MAX_PLAYERS}`;
+      $('lobby-players-heading').textContent = `👥 Players (${players.length}/${MAX_PLAYERS})`;
+      $('lobby-user-id').textContent = state.user.uid;
+
+      // Status pill
+      const pill = $('lobby-status-pill');
+      if (!canStart) {
+        pill.className = 'px-3.5 py-2 rounded-xl bg-amber-500/20 border border-amber-400/40 text-amber-200 text-xs font-bold';
+        pill.textContent = '⏳ Waiting for at least 2 players to start...';
+      } else {
+        pill.className = 'px-3.5 py-2 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 text-xs font-bold';
+        pill.textContent = `✅ Ready to launch! (${players.length} players joined)`;
+      }
+
+      // Add Bot button
+      $('btn-add-bot').classList.toggle('hidden', !(isHost && players.length < MAX_PLAYERS));
+      $('lobby-host-only-note').classList.toggle('hidden', isHost);
+
+      // 8 Player Slots
+      let slotsHtml = '';
+      for (let i = 0; i < MAX_PLAYERS; i++) {
+        const p = players[i];
+        if (!p) {
+          slotsHtml += `
+            <div class="p-3.5 rounded-2xl border-2 border-dashed border-white/10 bg-slate-950/35 flex flex-col items-center justify-center min-h-[108px] text-slate-500 text-xs font-semibold gap-1.5">
+              <div class="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center text-slate-600 font-bold">+</div>
+              <span>Empty Slot</span>
+            </div>
+          `;
+        } else {
+          const isSelf = p.id === state.user.uid;
+          const isRoomHost = p.id === r.hostId;
+          const online = p.isBot || Date.now() - (p.lastSeen || Date.now()) < 35000;
+          slotsHtml += `
+            <div class="relative p-3.5 rounded-2xl border flex flex-col items-center text-center gap-2 transition ${
+              isSelf ? 'bg-violet-500/20 border-violet-400/50 shadow-lg' : 'bg-white/5 border-white/10'
+            }">
+              ${
+                isHost && !isSelf
+                  ? `<button data-kick-id="${p.id}" title="Remove player" class="absolute top-2 right-2 w-6 h-6 rounded-lg bg-rose-500/20 hover:bg-rose-500/40 text-rose-300 text-xs font-bold transition">✕</button>`
+                  : ''
+              }
+              ${renderAvatarHtml(p.avatarId, 'md', { isHost: isRoomHost, isBot: p.isBot, online })}
+              <div class="w-full">
+                <div class="font-extrabold text-sm text-white truncate">
+                  ${escapeHtml(p.name)} ${isSelf ? '<span class="text-cyan-300">(You)</span>' : ''}
+                </div>
+                <div class="text-[11px] font-semibold text-slate-400">
+                  ${isRoomHost ? 'Host' : p.isBot ? 'AI Bot' : online ? 'Online' : 'Reconnecting'}
+                </div>
+              </div>
+            </div>
+          `;
+        }
+      }
+      $('lobby-players-grid').innerHTML = slotsHtml;
+
+      // Mode selector buttons
+      const modes = [
+        { id: 'mixed', label: 'Mixed Party', sub: 'All 3 Modes' },
+        { id: 'modeA', label: 'Mode A', sub: 'Number Guessing' },
+        { id: 'modeB', label: 'Mode B', sub: 'Word Drawing' },
+        { id: 'modeC', label: 'Mode C', sub: 'Draw & Guess' },
+      ];
+      $('settings-mode-grid').innerHTML = modes
+        .map(
+          (m) => `
+          <button type="button" data-set-mode="${m.id}" ${isHost ? '' : 'disabled'} class="p-3 rounded-2xl border text-left transition ${
+            settings.mode === m.id
+              ? 'bg-violet-600/35 border-violet-400 text-white shadow-lg'
+              : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'
+          } disabled:cursor-default">
+            <div class="font-extrabold text-xs">${m.label}</div>
+            <div class="text-[11px] text-slate-400">${m.sub}</div>
+          </button>
+        `
+        )
+        .join('');
+
+      // Difficulty buttons
+      $('settings-diff-grid').innerHTML = ['easy', 'medium', 'hard']
+        .map(
+          (d) => `
+          <button type="button" data-set-diff="${d}" ${isHost ? '' : 'disabled'} class="flex-1 py-2 rounded-xl text-xs font-extrabold capitalize border transition ${
+            settings.difficulty === d
+              ? 'bg-cyan-500 text-slate-950 border-cyan-400'
+              : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
+          }">${d}</button>
+        `
+        )
+        .join('');
+
+      $('settings-rounds-val').textContent = String(settings.totalRounds || 5);
+      $('btn-rounds-dec').disabled = !isHost;
+      $('btn-rounds-inc').disabled = !isHost;
+
+      if (document.activeElement !== $('input-range-min')) $('input-range-min').value = settings.numberMin ?? 1;
+      if (document.activeElement !== $('input-range-max')) $('input-range-max').value = settings.numberMax ?? 100;
+      $('input-range-min').disabled = !isHost;
+      $('input-range-max').disabled = !isHost;
+
+      // Restrict chat toggle
+      $('btn-toggle-restrict-chat').disabled = !isHost;
+      $('restrict-chat-track').className = `w-10 h-5 rounded-full p-0.5 transition inline-flex items-center ${
+        settings.restrictChat ? 'bg-emerald-500' : 'bg-slate-700'
+      }`;
+      $('restrict-chat-thumb').className = `w-4 h-4 rounded-full bg-white transition transform ${
+        settings.restrictChat ? 'translate-x-5' : 'translate-x-0'
+      }`;
+
+      // Start Game vs Waiting for Host
+      $('btn-start-game').classList.toggle('hidden', !isHost);
+      $('btn-start-game').disabled = !canStart;
+      $('lobby-wait-host-msg').classList.toggle('hidden', isHost);
+
+      renderChatFeeds();
+    };
+
+    const renderNumberGuessTracker = () => {
+      const r = state.room;
+      if (!r || r.status !== 'playing' || r.currentRound?.mode !== 'modeA') return;
+      const roundNum = r.currentRound.roundNumber;
+      const guesses = state.messages.filter((m) => m.type === 'guess' && m.roundNumber === roundNum);
+      const container = $('num-guess-chips');
+      if (guesses.length === 0) {
+        container.innerHTML = `<p class="text-sm text-slate-400 text-center w-full py-5">Type a number in the guess box to test your luck!</p>`;
+        return;
+      }
+      container.innerHTML = guesses
+        .slice(-20)
+        .map(
+          (g) => `
+          <div class="px-3 py-1.5 rounded-xl bg-slate-950/80 border border-white/10 text-xs font-bold flex items-center gap-1.5">
+            <span class="text-slate-400">${escapeHtml(g.senderName)}:</span>
+            <span class="text-white font-mono-game text-sm">${escapeHtml(g.text)}</span>
+            ${g.direction === 'higher' ? '<span class="text-amber-400" title="Secret is higher">⬆️</span>' : ''}
+            ${g.direction === 'lower' ? '<span class="text-cyan-400" title="Secret is lower">⬇️</span>' : ''}
+          </div>
+        `
+        )
+        .join('');
+    };
+
+    const renderGameArena = () => {
+      const r = state.room;
+      const round = r.currentRound || {};
+      const settings = r.settings || {};
+      const players = Object.values(r.players || {}).sort((a, b) => (b.score || 0) - (a.score || 0));
+      const hg = (r.players || {})[round.hintGiverId] || { name: 'Player', avatarId: 'astro-cat' };
+      const isHG = round.hintGiverId === state.user.uid;
+      const isHost = r.hostId === state.user.uid;
+      const mode = round.mode || 'modeC';
+      const modeMeta = getModeMeta(mode);
+      const correctMap = round.correctGuessers || {};
+      const hasSolved = Boolean(correctMap[state.user.uid]);
+
+      // Top HUD
+      $('hud-round-badge').textContent = `Round ${round.roundNumber || 1} / ${settings.totalRounds || 5}`;
+      $('hud-mode-badge').className = `px-3 py-1.5 rounded-xl border text-xs font-extrabold ${modeMeta.badge}`;
+      $('hud-mode-badge').textContent = modeMeta.name;
+      $('hud-hg-avatar').innerHTML = renderAvatarHtml(hg.avatarId, 'xs');
+      $('hud-hg-name').textContent = hg.name;
+
+      // Toggle Sub-Stages
+      const showChoosing = r.status === 'choosing';
+      const showNum = r.status === 'playing' && mode === 'modeA';
+      const showDraw = r.status === 'playing' && mode !== 'modeA';
+      const showEnd = r.status === 'round_end';
+
+      $('stage-choosing').classList.toggle('hidden', !showChoosing);
+      $('stage-playing-number').classList.toggle('hidden', !showNum);
+      $('stage-playing-draw').classList.toggle('hidden', !showDraw);
+      $('stage-round-end').classList.toggle('hidden', !showEnd);
+
+      // ----- PHASE 1: CHOOSING -----
+      if (showChoosing) {
+        $('choosing-hg-panel').classList.toggle('hidden', !isHG);
+        $('choosing-wait-panel').classList.toggle('hidden', isHG);
+
+        if (isHG) {
+          $('choosing-title').textContent =
+            mode === 'modeA'
+              ? 'Choose Your Secret Number'
+              : mode === 'modeB'
+              ? 'Pick a Category & Secret Word'
+              : 'Select a Word to Draw';
+
+          $('form-setup-modeA').classList.toggle('hidden', mode !== 'modeA');
+          $('form-setup-modeB').classList.toggle('hidden', mode !== 'modeB');
+          $('setup-modeC-choices').classList.toggle('hidden', mode !== 'modeC');
+
+          if (mode === 'modeA') {
+            const min = settings.numberMin ?? 1;
+            const max = settings.numberMax ?? 100;
+            $('setup-modeA-range-label').textContent = `Secret Number (${min} – ${max})`;
+            $('input-setup-num').min = min;
+            $('input-setup-num').max = max;
+            $('setup-digits-group').innerHTML = [1, 2, 3]
+              .map(
+                (d) => `
+                <button type="button" data-setup-digit="${d}" class="py-3 rounded-2xl font-black text-sm border transition ${
+                  state.setupDigits === d
+                    ? 'bg-cyan-500 text-slate-950 border-cyan-400'
+                    : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
+                }">${d} ${d === 1 ? 'Digit' : 'Digits'}</button>
+              `
+              )
+              .join('');
+          } else if (mode === 'modeB') {
+            $('setup-cat-group').innerHTML = CATEGORIES.map(
+              (cat) => `
+              <button type="button" data-setup-cat="${cat}" class="px-3 py-1.5 rounded-xl text-xs font-bold border transition ${
+                state.setupCategory === cat
+                  ? 'bg-amber-400 text-slate-950 border-amber-300'
+                  : 'bg-white/5 text-slate-300 border-white/10 hover:bg-white/10'
+              }">${cat}</button>
+            `
+            ).join('');
+          } else if (mode === 'modeC') {
+            $('setup-modeC-choices').innerHTML = (round.wordChoices || [])
+              .map(
+                (c, idx) => `
+                <button type="button" data-pick-modec="${idx}" class="p-5 rounded-2xl border text-center flex flex-col items-center gap-2 transition transform hover:-translate-y-1 shadow-lg ${
+                  c.difficulty === 'hard'
+                    ? 'bg-rose-500/15 border-rose-400/50 hover:bg-rose-500/25'
+                    : c.difficulty === 'medium'
+                    ? 'bg-amber-500/15 border-amber-400/50 hover:bg-amber-500/25'
+                    : 'bg-emerald-500/15 border-emerald-400/50 hover:bg-emerald-500/25'
+                }">
+                  <span class="text-[11px] font-black uppercase tracking-wider text-slate-300">${c.difficulty}${c.bonus > 0 ? ` (+${c.bonus} pts)` : ''}</span>
+                  <span class="text-xl font-black text-white">${escapeHtml(c.word)}</span>
+                  <span class="text-xs px-2.5 py-0.5 rounded-full bg-white/10 text-slate-200">${escapeHtml(c.category)}</span>
+                </button>
+              `
+              )
+              .join('');
+          }
+        } else {
+          $('choosing-wait-avatar').innerHTML = renderAvatarHtml(hg.avatarId, 'xl', { isBot: hg.isBot });
+          $('choosing-wait-name').textContent = hg.name;
+          $('choosing-wait-mode').textContent = modeMeta.name;
+        }
+      }
+
+      // ----- PHASE 2A: NUMBER GUESSING -----
+      if (showNum) {
+        const min = settings.numberMin ?? 1;
+        const max = settings.numberMax ?? 100;
+        $('num-range-heading').textContent = `Range: ${min} – ${max}`;
+        $('num-digits-badge').textContent = `🎯 ${round.digitCount} ${round.digitCount === 1 ? 'Digit' : 'Digits'}`;
+
+        $('num-secret-pill').classList.toggle('hidden', !isHG);
+        $('num-clue-builder').classList.toggle('hidden', !isHG);
+        $('num-guess-tracker').classList.toggle('hidden', isHG);
+
+        if (isHG) {
+          const sec = decodeSecret(round.secretEncoded);
+          $('num-secret-value').textContent = state.showSecretNum ? sec : '•••';
+          $('btn-clue-parity').textContent =
+            Number(sec) % 2 === 0 ? '✨ Publish: EVEN Number' : '✨ Publish: ODD Number';
+          const hlOn = round.enableHighLow !== false;
+          $('btn-toggle-highlow').textContent = `High/Low Arrows: ${hlOn ? 'ON' : 'OFF'}`;
+          $('btn-toggle-highlow').className = `px-3 py-1.5 rounded-xl text-xs font-bold border transition ${
+            hlOn
+              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+              : 'bg-white/5 text-slate-400 border-white/10'
+          }`;
+        } else {
+          renderNumberGuessTracker();
+        }
+
+        const clues = round.clues || [];
+        $('num-clues-list').innerHTML =
+          clues.length === 0
+            ? `<div class="p-4 w-full rounded-2xl bg-slate-950/50 border border-dashed border-white/15 text-sm text-slate-400 text-center">${
+                isHG
+                  ? 'Use the Clue Builder below to drop helpful clues for guessers!'
+                  : 'Waiting for the Hint Giver to publish clues... Start guessing!'
+              }</div>`
+            : clues
+                .map(
+                  (c) => `
+                  <span class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-violet-600/30 to-cyan-600/30 border border-cyan-400/40 text-white font-bold text-sm shadow-lg">
+                    ✨ ${escapeHtml(c.text)}
+                  </span>
+                `
+                )
+                .join('');
+      }
+
+      // ----- PHASE 2B: DRAWING BOARD (MODE B & C) -----
+      if (showDraw) {
+        $('draw-category-badge').textContent = `Category: ${round.category || 'General'}`;
+        if ((round.bonusPoints || 0) > 0) {
+          $('draw-bonus-badge').textContent = `+${round.bonusPoints} Bonus`;
+          $('draw-bonus-badge').classList.remove('hidden');
+        } else {
+          $('draw-bonus-badge').classList.add('hidden');
+        }
+
+        $('draw-hg-banner').classList.toggle('hidden', !isHG);
+        $('draw-guesser-banner').classList.toggle('hidden', isHG);
+        $('draw-toolbar').classList.toggle('hidden', !isHG);
+        $('canvas-live-pill').classList.toggle('hidden', isHG);
+
+        const cont = $('canvas-container');
+        cont.className = `relative w-full h-[290px] sm:h-[370px] lg:h-[420px] rounded-2xl overflow-hidden border-2 shadow-2xl bg-slate-900 select-none ${
+          isHG ? 'border-violet-500/60 cursor-crosshair' : 'border-white/15 cursor-default'
+        }`;
+
+        if (isHG) {
+          $('draw-secret-word').textContent = decodeSecret(round.secretEncoded);
+          $('btn-hg-reveal-letter').classList.toggle('hidden', Boolean(round.firstLetterRevealed));
+        } else {
+          const len = round.wordLength || 0;
+          const first = round.firstLetterRevealed ? round.firstLetter : null;
+          let tiles = '';
+          for (let i = 0; i < len; i++) {
+            const showChar = i === 0 && first;
+            tiles += `
+              <div class="w-7 h-8 sm:w-8 sm:h-9 rounded-lg flex items-center justify-center font-black text-base border ${
+                showChar
+                  ? 'bg-amber-400/25 border-amber-400 text-amber-200'
+                  : 'bg-slate-950/80 border-white/20 text-slate-400'
+              }">${showChar ? escapeHtml(first.toUpperCase()) : '_'}</div>
+            `;
+          }
+          tiles += `<span class="ml-1.5 text-xs font-bold text-slate-300">(${len} letters)</span>`;
+          $('draw-masked-tiles').innerHTML = tiles;
+          $('btn-guesser-reveal-letter').classList.toggle(
+            'hidden',
+            !(mode === 'modeB' && !round.firstLetterRevealed && !hasSolved)
+          );
+        }
+
+        requestAnimationFrame(resizeDrawingCanvas);
+      }
+
+      // ----- PHASE 3: ROUND END SUMMARY -----
+      if (showEnd) {
+        $('round-end-reason').textContent =
+          round.endReason === 'all_guessed' ? '🎉 Everyone Solved It!' : '⏰ Time Over!';
+        $('round-end-answer').textContent = decodeSecret(round.secretEncoded);
+        $('round-end-heading').textContent = `Round ${round.roundNumber} Points Breakdown`;
+
+        $('round-end-list').innerHTML = players
+          .map((p) => {
+            const earned = (round.roundPoints || {})[p.id] || 0;
+            const gInfo = correctMap[p.id];
+            const isPlayerHG = p.id === round.hintGiverId;
+            const subText = gInfo
+              ? `#${gInfo.rank} guess in ${gInfo.timeTakenSec}s`
+              : isPlayerHG
+              ? earned > 0
+                ? 'Someone guessed your clue!'
+                : 'Nobody solved it'
+              : 'Did not guess';
+            return `
+              <div class="p-3 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3 min-w-0">
+                  ${renderAvatarHtml(p.avatarId, 'sm', { isBot: p.isBot })}
+                  <div class="truncate">
+                    <div class="font-extrabold text-sm text-white truncate">
+                      ${escapeHtml(p.name)}
+                      ${isPlayerHG ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-300 ml-1">Hint Giver</span>' : ''}
+                    </div>
+                    <div class="text-[11px] text-slate-400">${escapeHtml(subText)}</div>
+                  </div>
+                </div>
+                <div class="text-right shrink-0">
+                  <div class="font-black text-base ${earned > 0 ? 'text-emerald-300' : 'text-slate-500'}">+${earned} pts</div>
+                  <div class="text-[11px] text-slate-400 font-bold">Total: ${p.score || 0}</div>
+                </div>
+              </div>
+            `;
+          })
+          .join('');
+
+        $('btn-advance-round').classList.toggle('hidden', !isHost);
+        $('round-end-wait-msg').classList.toggle('hidden', isHost);
+      }
+
+      // ----- LIVE SCOREBOARD STRIP -----
+      $('game-scoreboard-strip').innerHTML = players
+        .map((p, idx) => {
+          const solved = Boolean(correctMap[p.id]);
+          const isPlayerHG = p.id === round.hintGiverId;
+          return `
+            <div class="shrink-0 px-3 py-2 rounded-2xl border flex items-center gap-2.5 min-w-[148px] transition ${
+              solved
+                ? 'bg-emerald-500/20 border-emerald-400/50'
+                : isPlayerHG
+                ? 'bg-amber-500/15 border-amber-400/40'
+                : 'bg-white/5 border-white/10'
+            }">
+              <span class="text-xs font-black text-slate-400">#${idx + 1}</span>
+              ${renderAvatarHtml(p.avatarId, 'xs', { isBot: p.isBot })}
+              <div class="min-w-0 flex-1">
+                <div class="text-xs font-extrabold text-white truncate">
+                  ${escapeHtml(p.name)} ${solved ? '✅' : isPlayerHG ? '🎨' : ''}
+                </div>
+                <div class="text-[11px] font-bold text-cyan-300">
+                  ${p.score || 0} pts ${(p.streak || 0) >= 2 ? `<span class="text-orange-400 ml-1">🔥${p.streak}</span>` : ''}
+                </div>
+              </div>
+            </div>
+          `;
+        })
+        .join('');
+
+      // ----- GAME CHAT INPUT STATE -----
+      const isPlaying = r.status === 'playing';
+      const restrict = Boolean(settings.restrictChat);
+      const canTypeGuess = isPlaying && !isHG && !hasSolved;
+      const chatLocked = isPlaying && restrict && (isHG || hasSolved);
+
+      $('chat-lock-badge').classList.toggle('hidden', !(restrict && isPlaying));
+      const inp = $('input-game-chat');
+      inp.disabled = chatLocked;
+      $('btn-game-chat-send').disabled = chatLocked;
+      inp.type = canTypeGuess && mode === 'modeA' ? 'number' : 'text';
+
+      if (canTypeGuess) {
+        inp.placeholder = mode === 'modeA' ? 'Enter your number guess...' : 'Type your word guess here...';
+      } else if (hasSolved && isPlaying) {
+        inp.placeholder = chatLocked ? 'Chat locked until round ends...' : 'You solved it! Cheer on others...';
+      } else if (isHG && isPlaying) {
+        inp.placeholder = chatLocked ? 'Chat locked during active round...' : 'Chat (secret word blocked)...';
+      } else {
+        inp.placeholder = 'Type a message...';
+      }
+
+      renderChatFeeds();
+      updateTimerDisplay();
+    };
+
+    const renderChatFeeds = () => {
+      const html =
+        state.messages.length === 0
+          ? `<div class="h-full flex flex-col items-center justify-center text-slate-500 text-xs text-center px-4">✨ Say hello or drop your guesses here!</div>`
+          : state.messages
+              .map((m) => {
+                if (m.type === 'correct') {
+                  return `<div class="px-3 py-2 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 text-xs font-extrabold flex items-center gap-2 shadow-sm"><span>🎉</span><span>${escapeHtml(m.text)}</span></div>`;
+                }
+                if (m.type === 'system') {
+                  return `<div class="px-2.5 py-1 rounded-lg bg-violet-500/15 text-violet-200 text-[11px] font-semibold text-center">${escapeHtml(m.text)}</div>`;
+                }
+                return `
+                  <div class="px-3 py-1.5 rounded-xl bg-white/5 border border-white/5 text-xs leading-relaxed break-words flex items-center justify-between gap-2">
+                    <div><span class="font-extrabold text-cyan-300 mr-1.5">${escapeHtml(m.senderName)}:</span><span class="text-slate-100">${escapeHtml(m.text)}</span></div>
+                    ${m.direction === 'higher' ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 shrink-0">Higher ⬆️</span>' : ''}
+                    ${m.direction === 'lower' ? '<span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 shrink-0">Lower ⬇️</span>' : ''}
+                  </div>
+                `;
+              })
+              .join('');
+
+      ['lobby-chat-list', 'game-chat-list'].forEach((id) => {
+        const el = $(id);
+        el.innerHTML = html;
+        el.scrollTop = el.scrollHeight;
+      });
+    };
+
+    const renderWinnerScreen = () => {
+      const r = state.room;
+      const standings = Object.values(r.players || {}).sort((a, b) => (b.score || 0) - (a.score || 0));
+      const isHost = r.hostId === state.user.uid;
+      const [first, second, third] = standings;
+
+      $('winner-headline').textContent = first ? `${first.name} Wins!` : 'Game Complete!';
+
+      // Podium
+      let podiumHtml = '';
+      if (second) {
+        podiumHtml += `
+          <div class="flex flex-col items-center w-28 sm:w-36">
+            ${renderAvatarHtml(second.avatarId, 'md', { isBot: second.isBot })}
+            <div class="mt-2 font-extrabold text-sm text-white truncate max-w-full">${escapeHtml(second.name)}</div>
+            <div class="text-xs font-bold text-slate-300 mb-2">${second.score || 0} pts</div>
+            <div class="w-full h-24 rounded-t-2xl bg-gradient-to-b from-slate-300/35 to-slate-600/30 border-t-2 border-slate-300 flex items-center justify-center shadow-xl">
+              <span class="text-2xl font-black text-slate-200">🥈 2nd</span>
+            </div>
+          </div>
+        `;
+      }
+      if (first) {
+        podiumHtml += `
+          <div class="flex flex-col items-center w-32 sm:w-44">
+            <div class="text-3xl mb-1 animate-bounce">👑</div>
+            ${renderAvatarHtml(first.avatarId, 'lg', { isBot: first.isBot })}
+            <div class="mt-2 font-black text-base text-amber-200 truncate max-w-full">${escapeHtml(first.name)}</div>
+            <div class="text-sm font-black text-emerald-300 mb-2">${first.score || 0} pts</div>
+            <div class="w-full h-32 rounded-t-2xl bg-gradient-to-b from-amber-400/40 to-amber-700/30 border-t-2 border-amber-300 flex items-center justify-center shadow-[0_0_35px_rgba(251,191,36,0.35)]">
+              <span class="text-3xl font-black text-amber-200">🥇 1st</span>
+            </div>
+          </div>
+        `;
+      }
+      if (third) {
+        podiumHtml += `
+          <div class="flex flex-col items-center w-28 sm:w-36">
+            ${renderAvatarHtml(third.avatarId, 'md', { isBot: third.isBot })}
+            <div class="mt-2 font-extrabold text-sm text-white truncate max-w-full">${escapeHtml(third.name)}</div>
+            <div class="text-xs font-bold text-orange-300 mb-2">${third.score || 0} pts</div>
+            <div class="w-full h-20 rounded-t-2xl bg-gradient-to-b from-orange-400/35 to-orange-800/30 border-t-2 border-orange-400 flex items-center justify-center shadow-xl">
+              <span class="text-xl font-black text-orange-200">🥉 3rd</span>
+            </div>
+          </div>
+        `;
+      }
+      $('winner-podium').innerHTML = podiumHtml;
+
+      // Achievements
+      const ach = [];
+      const withFast = standings.filter((p) => p.fastestGuessSec != null);
+      if (withFast.length) {
+        const best = [...withFast].sort((a, b) => a.fastestGuessSec - b.fastestGuessSec)[0];
+        ach.push({ icon: '⚡', title: 'Lightning Reflex', player: best.name, detail: `Fastest in ${best.fastestGuessSec}s`, cls: 'from-cyan-500/20 to-blue-500/20 border-cyan-400/40 text-cyan-200' });
+      }
+      const topHG = [...standings].sort((a, b) => (b.hintGiverPoints || 0) - (a.hintGiverPoints || 0))[0];
+      if (topHG && (topHG.hintGiverPoints || 0) > 0) {
+        ach.push({ icon: '🧠', title: 'Master Mind', player: topHG.name, detail: `${topHG.hintGiverPoints} Hint Giver pts`, cls: 'from-violet-500/20 to-fuchsia-500/20 border-violet-400/40 text-violet-200' });
+      }
+      const topStreak = [...standings].sort((a, b) => (b.bestStreak || 0) - (a.bestStreak || 0))[0];
+      if (topStreak && (topStreak.bestStreak || 0) >= 2) {
+        ach.push({ icon: '🔥', title: 'Unstoppable', player: topStreak.name, detail: `${topStreak.bestStreak}-round streak`, cls: 'from-orange-500/20 to-rose-500/20 border-orange-400/40 text-orange-200' });
+      }
+      const sharp = [...standings].sort((a, b) => (b.correctGuesses || 0) - (a.correctGuesses || 0))[0];
+      if (sharp && (sharp.correctGuesses || 0) > 0) {
+        ach.push({ icon: '🎯', title: 'Sharp Shooter', player: sharp.name, detail: `${sharp.correctGuesses} solved`, cls: 'from-emerald-500/20 to-teal-500/20 border-emerald-400/40 text-emerald-200' });
+      }
+      $('winner-achievements').innerHTML = ach
+        .map(
+          (a) => `
+          <div class="p-3.5 rounded-2xl bg-gradient-to-br border backdrop-blur-md text-center space-y-1 ${a.cls}">
+            <div class="text-2xl">${a.icon}</div>
+            <div class="font-black text-xs uppercase tracking-wider">${a.title}</div>
+            <div class="font-extrabold text-sm text-white truncate">${escapeHtml(a.player)}</div>
+            <div class="text-[11px] opacity-85">${escapeHtml(a.detail)}</div>
+          </div>
+        `
+        )
+        .join('');
+
+      // Full Table
+      $('winner-table-body').innerHTML = standings
+        .map(
+          (p, i) => `
+          <tr class="${p.id === state.user.uid ? 'bg-violet-500/15' : ''}">
+            <td class="py-3 pr-3 font-black text-slate-300">#${i + 1}</td>
+            <td class="py-3 pr-3">
+              <div class="flex items-center gap-2.5">
+                ${renderAvatarHtml(p.avatarId, 'xs', { isBot: p.isBot })}
+                <span class="font-bold text-white">${escapeHtml(p.name)}</span>
+              </div>
+            </td>
+            <td class="py-3 px-3 text-right font-black text-emerald-300">${p.score || 0}</td>
+            <td class="py-3 px-3 text-right font-bold text-slate-200">${p.correctGuesses || 0}</td>
+            <td class="py-3 px-3 text-right font-mono-game text-cyan-300">${p.fastestGuessSec != null ? `${p.fastestGuessSec}s` : '—'}</td>
+            <td class="py-3 pl-3 text-right font-bold text-orange-300">${p.bestStreak || 0}</td>
+          </tr>
+        `
+        )
+        .join('');
+
+      // History Accordion
+      const hist = r.gameHistory || [];
+      $('winner-history-label').textContent = `📜 Round-by-Round History (${hist.length} Rounds)`;
+      $('winner-history-body').innerHTML =
+        hist.length === 0
+          ? `<div class="text-xs text-slate-400 text-center py-3">No round history recorded.</div>`
+          : hist
+              .map(
+                (h) => `
+                <div class="p-3 rounded-xl bg-white/5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span class="font-bold text-slate-300">R${h.roundNumber} • ${getModeMeta(h.mode).short} (${escapeHtml(h.hintGiverName)})</span>
+                  <span class="font-black text-amber-300">Answer: ${escapeHtml(h.answer)}</span>
+                  <span class="text-cyan-300">${h.solvedCount} solved${h.fastestPlayer ? ` • Fastest: ${escapeHtml(h.fastestPlayer)}` : ''}</span>
+                </div>
+              `
+              )
+              .join('');
+
+      $('btn-play-again').classList.toggle('hidden', !isHost);
+      $('btn-return-lobby').classList.toggle('hidden', !isHost);
+      $('winner-wait-host').classList.toggle('hidden', isHost);
+    };
+
+    const renderHistoryModal = () => {
+      const hist = state.room?.gameHistory || [];
+      $('modal-history-list').innerHTML =
+        hist.length === 0
+          ? `<div class="text-center py-10 text-slate-400 text-sm">No completed rounds yet. Finish a round to see the recap!</div>`
+          : [...hist]
+              .reverse()
+              .map(
+                (h) => `
+                <div class="p-4 rounded-2xl bg-white/5 border border-white/10 space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <span class="text-xs font-extrabold uppercase tracking-wider text-slate-400">Round ${h.roundNumber} • ${getModeMeta(h.mode).short}</span>
+                    <span class="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">Answer: ${escapeHtml(h.answer)}</span>
+                  </div>
+                  <div class="text-xs text-slate-300 flex flex-wrap gap-x-4 gap-y-1">
+                    <span>Hint Giver: <strong class="text-white">${escapeHtml(h.hintGiverName)}</strong></span>
+                    <span>Solved by: <strong class="text-cyan-300">${h.solvedCount}</strong></span>
+                    ${h.fastestPlayer ? `<span>Fastest: <strong class="text-amber-300">${escapeHtml(h.fastestPlayer)}</strong> (${h.fastestTimeSec}s)</span>` : ''}
+                  </div>
+                </div>
+              `
+              )
+              .join('');
+    };
+
+    const renderSoundModalControls = () => {
+      const a = state.audio;
+      $('slider-music').value = Math.round(a.musicVolume * 100);
+      $('label-music-pct').textContent = `${Math.round(a.musicVolume * 100)}%`;
+      $('btn-mute-music').textContent = a.musicMuted ? 'Muted' : 'Active';
+      $('btn-mute-music').className = `px-3 py-1 rounded-full text-xs font-bold border ${
+        a.musicMuted ? 'bg-rose-500/20 text-rose-300 border-rose-500/40' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+      }`;
+
+      $('slider-sfx').value = Math.round(a.sfxVolume * 100);
+      $('label-sfx-pct').textContent = `${Math.round(a.sfxVolume * 100)}%`;
+      $('btn-mute-sfx').textContent = a.sfxMuted ? 'Muted' : 'Active';
+      $('btn-mute-sfx').className = `px-3 py-1 rounded-full text-xs font-bold border ${
+        a.sfxMuted ? 'bg-rose-500/20 text-rose-300 border-rose-500/40' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+      }`;
+    };
+
+    const renderDrawToolbar = () => {
+      $('tool-pencil').className = `px-3 py-2 rounded-xl font-bold text-xs transition ${
+        state.drawTool === 'pencil' ? 'bg-violet-600 text-white shadow-lg' : 'bg-white/5 text-slate-300 hover:bg-white/10'
+      }`;
+      $('tool-eraser').className = `px-3 py-2 rounded-xl font-bold text-xs transition ${
+        state.drawTool === 'eraser' ? 'bg-rose-600 text-white shadow-lg' : 'bg-white/5 text-slate-300 hover:bg-white/10'
+      }`;
+
+      $('draw-colors-bar').innerHTML = DRAW_COLORS.map(
+        (c) => `
+        <button type="button" data-draw-color="${c}" style="background-color:${c}" aria-label="Color ${c}" class="w-6 h-6 rounded-full transition transform hover:scale-110 ${
+          state.drawColor === c && state.drawTool === 'pencil'
+            ? 'ring-2 ring-offset-2 ring-offset-slate-900 ring-cyan-400 scale-110'
+            : 'ring-1 ring-white/25'
+        }"></button>
+      `
+      ).join('');
+
+      $('draw-sizes-bar').innerHTML = BRUSH_SIZES.map(
+        (b) => `
+        <button type="button" data-draw-size="${b.value}" class="px-2 py-1 rounded-lg text-xs font-extrabold transition ${
+          state.drawSize === b.value ? 'bg-cyan-500 text-slate-950' : 'text-slate-300 hover:bg-white/10'
+        }">${b.label}</button>
+      `
+      ).join('');
+    };
+
+    const renderApp = () => {
+      $('view-loading').classList.add('hidden');
+      const status = !state.room ? 'home' : state.room.status;
+
+      $('view-home').classList.toggle('hidden', status !== 'home');
+      $('view-lobby').classList.toggle('hidden', status !== 'lobby');
+      $('view-game').classList.toggle('hidden', !['choosing', 'playing', 'round_end'].includes(status));
+      $('view-winner').classList.toggle('hidden', status !== 'game_over');
+
+      if (status === 'game_over') {
+        if (!state.confettiAnimId) startConfetti();
+        renderWinnerScreen();
+      } else {
+        stopConfetti();
+        if (status === 'home') renderHome();
+        else if (status === 'lobby') renderLobby();
+        else renderGameArena();
+      }
+    };
+
+    // =========================================================================
+    // 14. STATIC UI WIRING & EVENT DELEGATION
+    // =========================================================================
+    const wireAllEvents = () => {
+      // Unlock Web Audio cleanly on first interaction
+      const unlockAudio = () => {
+        soundEngine.ensureContext();
+        soundEngine.startMusic();
+      };
+      window.addEventListener('pointerdown', unlockAudio, { once: true });
+      window.addEventListener('keydown', unlockAudio, { once: true });
+
+      // Populate Emoji Reaction Bars
+      const emojiBarHtml = REACTION_EMOJIS.map(
+        (em) => `<button type="button" data-react-emoji="${em}" class="flex-1 py-1.5 rounded-xl bg-white/5 hover:bg-white/15 active:scale-90 text-lg transition">${em}</button>`
+      ).join('');
+      $('lobby-emoji-bar').innerHTML = emojiBarHtml;
+      $('game-emoji-bar').innerHTML = emojiBarHtml;
+
+      renderDrawToolbar();
+
+      // Home events
+      $('input-username').addEventListener('input', (e) => {
+        state.username = e.target.value;
+      });
+      $('input-join-code').addEventListener('input', (e) => {
+        e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+      });
+      $('btn-create-room').addEventListener('click', createRoom);
+      $('form-join-room').addEventListener('submit', (e) => {
+        e.preventDefault();
+        joinRoom($('input-join-code').value);
+      });
+      $('btn-reconnect-now').addEventListener('click', () => {
+        if (state.reconnectRoomCode) joinRoom(state.reconnectRoomCode);
+      });
+      $('btn-reconnect-dismiss').addEventListener('click', () => {
+        state.reconnectRoomCode = null;
+        saveCurrentProfile({ activeRoomCode: null });
+        renderHome();
+      });
+
+      // Lobby events
+      $('btn-copy-code').addEventListener('click', () => {
+        if (!state.room) return;
+        soundEngine.play('click');
+        copyTextSafe(state.room.roomCode);
+        showToast(`Room code ${state.room.roomCode} copied!`);
+      });
+      $('btn-add-bot').addEventListener('click', addPracticeBot);
+      $('btn-start-game').addEventListener('click', startGame);
+      $('btn-rounds-dec').addEventListener('click', () => {
+        const cur = state.room?.settings?.totalRounds || 5;
+        if (cur > 3) {
+          soundEngine.play('click');
+          updateRoomSettings({ totalRounds: cur - 1 });
+        }
+      });
+      $('btn-rounds-inc').addEventListener('click', () => {
+        const cur = state.room?.settings?.totalRounds || 5;
+        if (cur < 16) {
+          soundEngine.play('click');
+          updateRoomSettings({ totalRounds: cur + 1 });
+        }
+      });
+      $('input-range-min').addEventListener('change', (e) => {
+        const v = Math.max(1, Math.min(998, parseInt(e.target.value, 10) || 1));
+        updateRoomSettings({ numberMin: v });
+      });
+      $('input-range-max').addEventListener('change', (e) => {
+        const v = Math.max(10, Math.min(999, parseInt(e.target.value, 10) || 100));
+        updateRoomSettings({ numberMax: v });
+      });
+      $('btn-toggle-restrict-chat').addEventListener('click', () => {
+        soundEngine.play('click');
+        updateRoomSettings({ restrictChat: !state.room?.settings?.restrictChat });
+      });
+
+      // Chat forms
+      $('form-lobby-chat').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const val = $('input-lobby-chat').value.trim();
+        if (!val) return;
+        $('input-lobby-chat').value = '';
+        submitGuessOrChat(state.user.uid, state.room?.players?.[state.user.uid]?.name || state.username, val);
+      });
+      $('form-game-chat').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const val = $('input-game-chat').value.trim();
+        if (!val) return;
+        $('input-game-chat').value = '';
+        submitGuessOrChat(state.user.uid, state.room?.players?.[state.user.uid]?.name || state.username, val);
+      });
+
+      // Setup Phase forms
+      $('input-setup-num').addEventListener('input', (e) => {
+        const n = parseInt(e.target.value, 10);
+        if (!isNaN(n)) {
+          state.setupDigits = String(Math.abs(n)).length;
+          renderGameArena();
+        }
+      });
+      $('btn-setup-num-rand').addEventListener('click', () => {
+        const min = state.room?.settings?.numberMin ?? 1;
+        const max = state.room?.settings?.numberMax ?? 100;
+        const rand = Math.floor(Math.random() * (max - min + 1)) + min;
+        $('input-setup-num').value = String(rand);
+        state.setupDigits = String(Math.abs(rand)).length;
+        soundEngine.play('click');
+        renderGameArena();
+      });
+      $('form-setup-modeA').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const min = state.room?.settings?.numberMin ?? 1;
+        const max = state.room?.settings?.numberMax ?? 100;
+        const num = parseInt($('input-setup-num').value, 10);
+        const errEl = $('choosing-error');
+        if (isNaN(num) || num < min || num > max) {
+          errEl.textContent = `Please pick a number between ${min} and ${max}.`;
+          errEl.classList.remove('hidden');
+          return;
+        }
+        const digits = String(Math.abs(num)).length;
+        if (digits !== state.setupDigits) {
+          errEl.textContent = `Digit mismatch! ${num} has ${digits} digit(s). Select ${digits} digit(s).`;
+          errEl.classList.remove('hidden');
+          return;
+        }
+        errEl.classList.add('hidden');
+        submitRoundSetup({
+          secret: String(num),
+          digitCount: digits,
+          category: 'Numbers',
+          difficulty: state.room?.settings?.difficulty || 'medium',
+          bonusPoints: 0,
+        });
+      });
+
+      $('btn-setup-word-rand').addEventListener('click', () => {
+        const picked = pickRandomWord(state.setupCategory, state.room?.settings?.difficulty || 'medium');
+        $('input-setup-word').value = picked.word;
+        soundEngine.play('click');
+      });
+      $('form-setup-modeB').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const clean = $('input-setup-word').value.trim().replace(/[^a-zA-Z ]/g, '');
+        const errEl = $('choosing-error');
+        if (clean.length < 2 || clean.length > 18) {
+          errEl.textContent = 'Please enter a word between 2 and 18 letters.';
+          errEl.classList.remove('hidden');
+          return;
+        }
+        errEl.classList.add('hidden');
+        const diff = state.room?.settings?.difficulty || 'medium';
+        submitRoundSetup({
+          secret: clean,
+          category: state.setupCategory,
+          difficulty: diff,
+          bonusPoints: diff === 'hard' ? 20 : diff === 'medium' ? 10 : 0,
+        });
+      });
+
+      // Mode A Clue Builder buttons
+      const publishClue = async (label, type) => {
+        const errEl = $('num-clue-error');
+        errEl.classList.add('hidden');
+        const existing = state.room?.currentRound?.clues || [];
+        if (existing.some((c) => c.text.toLowerCase() === label.toLowerCase())) {
+          errEl.textContent = 'You already published that clue!';
+          errEl.classList.remove('hidden');
+          return;
+        }
+        soundEngine.play('click');
+        await backend.updateDocData('rooms', state.activeRoomCode, {
+          'currentRound.clues': [...existing, { id: `c_${Date.now()}`, type, text: label }],
+        });
+        await appendFeedMessage(state.activeRoomCode, {
+          id: `cl_${Date.now()}`,
+          type: 'system',
+          text: `💡 New Clue: ${label}`,
+          ts: Date.now(),
+        });
+      };
+
+      const showClueErr = (msg) => {
+        $('num-clue-error').textContent = msg;
+        $('num-clue-error').classList.remove('hidden');
+      };
+
+      $('btn-toggle-secret-eye').addEventListener('click', () => {
+        state.showSecretNum = !state.showSecretNum;
+        renderGameArena();
+      });
+      $('btn-toggle-highlow').addEventListener('click', () => {
+        const cur = state.room?.currentRound?.enableHighLow !== false;
+        backend.updateDocData('rooms', state.activeRoomCode, { 'currentRound.enableHighLow': !cur });
+      });
+      $('btn-clue-parity').addEventListener('click', () => {
+        const val = Number(decodeSecret(state.room?.currentRound?.secretEncoded));
+        publishClue(val % 2 === 0 ? 'Number is EVEN' : 'Number is ODD', 'parity');
+      });
+      $('btn-clue-gt').addEventListener('click', () => {
+        const val = Number(decodeSecret(state.room?.currentRound?.secretEncoded));
+        const x = parseInt($('input-clue-gt').value, 10);
+        if (isNaN(x)) return showClueErr('Enter a valid number.');
+        if (!(val > x)) return showClueErr(`Your secret (${val}) is NOT greater than ${x}.`);
+        $('input-clue-gt').value = '';
+        publishClue(`Greater than ${x}`, 'gt');
+      });
+      $('btn-clue-lt').addEventListener('click', () => {
+        const val = Number(decodeSecret(state.room?.currentRound?.secretEncoded));
+        const x = parseInt($('input-clue-lt').value, 10);
+        if (isNaN(x)) return showClueErr('Enter a valid number.');
+        if (!(val < x)) return showClueErr(`Your secret (${val}) is NOT less than ${x}.`);
+        $('input-clue-lt').value = '';
+        publishClue(`Less than ${x}`, 'lt');
+      });
+      $('btn-clue-range').addEventListener('click', () => {
+        const val = Number(decodeSecret(state.room?.currentRound?.secretEncoded));
+        const a = parseInt($('input-clue-rmin').value, 10);
+        const b = parseInt($('input-clue-rmax').value, 10);
+        if (isNaN(a) || isNaN(b) || a >= b) return showClueErr('Enter valid Min and Max values.');
+        if (val < a || val > b) return showClueErr(`Your secret (${val}) must lie between ${a} and ${b}.`);
+        $('input-clue-rmin').value = '';
+        $('input-clue-rmax').value = '';
+        publishClue(`Between ${a} and ${b}`, 'range');
+      });
+      $('form-clue-custom').addEventListener('submit', (e) => {
+        e.preventDefault();
+        const val = Number(decodeSecret(state.room?.currentRound?.secretEncoded));
+        const txt = $('input-clue-custom').value.trim();
+        if (!txt) return;
+        if (new RegExp(`\\b${val}\\b`).test(txt)) {
+          return showClueErr('Custom clue cannot contain the secret number!');
+        }
+        $('input-clue-custom').value = '';
+        publishClue(txt, 'custom');
+      });
+
+      // First-Letter Hint Reveal
+      const revealFirstLetter = async () => {
+        if (!state.room || state.room.currentRound?.firstLetterRevealed) return;
+        soundEngine.play('click');
+        await backend.updateDocData('rooms', state.activeRoomCode, { 'currentRound.firstLetterRevealed': true });
+        await appendFeedMessage(state.activeRoomCode, {
+          id: `hint_${Date.now()}`,
+          type: 'system',
+          text: '💡 First-letter hint revealed! (-15 pts penalty on guesses)',
+          ts: Date.now(),
+        });
+      };
+      $('btn-hg-reveal-letter').addEventListener('click', revealFirstLetter);
+      $('btn-guesser-reveal-letter').addEventListener('click', revealFirstLetter);
+
+      // Drawing Toolbar actions
+      $('tool-pencil').addEventListener('click', () => {
+        soundEngine.play('click');
+        state.drawTool = 'pencil';
+        renderDrawToolbar();
+      });
+      $('tool-eraser').addEventListener('click', () => {
+        soundEngine.play('click');
+        state.drawTool = 'eraser';
+        renderDrawToolbar();
+      });
+      $('btn-canvas-undo').addEventListener('click', async () => {
+        soundEngine.play('click');
+        await backend.transact('canvas', state.activeRoomCode, (existing) => {
+          const prev = existing?.strokes || [];
+          if (!prev.length) return null;
+          return { set: { strokes: prev.slice(0, -1), updatedAt: Date.now() } };
+        });
+      });
+      $('btn-canvas-clear').addEventListener('click', async () => {
+        soundEngine.play('click');
+        await backend.setDocData('canvas', state.activeRoomCode, { strokes: [], updatedAt: Date.now() });
+      });
+
+      // Round End & Winner actions
+      $('btn-advance-round').addEventListener('click', advanceToNextRound);
+      $('btn-play-again').addEventListener('click', startGame);
+      $('btn-return-lobby').addEventListener('click', returnToLobby);
+      $('btn-winner-history-toggle').addEventListener('click', () => {
+        const body = $('winner-history-body');
+        const hidden = body.classList.toggle('hidden');
+        $('winner-history-arrow').textContent = hidden ? '▼' : '▲';
+      });
+
+      // Sound Settings Modal controls
+      const applyAudio = (partial) => {
+        state.audio = { ...state.audio, ...partial };
+        soundEngine.updateSettings(state.audio);
+        renderSoundModalControls();
+        saveCurrentProfile({ audio: state.audio });
+      };
+      $('slider-music').addEventListener('input', (e) => {
+        const v = Number(e.target.value) / 100;
+        applyAudio({ musicVolume: v, musicMuted: v === 0 ? true : state.audio.musicMuted });
+      });
+      $('slider-sfx').addEventListener('input', (e) => {
+        const v = Number(e.target.value) / 100;
+        applyAudio({ sfxVolume: v, sfxMuted: v === 0 ? true : state.audio.sfxMuted });
+      });
+      $('btn-mute-music').addEventListener('click', () => applyAudio({ musicMuted: !state.audio.musicMuted }));
+      $('btn-mute-sfx').addEventListener('click', () => applyAudio({ sfxMuted: !state.audio.sfxMuted }));
+      $('btn-test-sfx').addEventListener('click', () => soundEngine.play('correct'));
+
+      // Global Event Delegation for dynamic buttons
+      document.addEventListener('click', (e) => {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+
+        if (btn.hasAttribute('data-open-sound')) {
+          soundEngine.play('click');
+          renderSoundModalControls();
+          $('modal-sound').classList.remove('hidden');
+          return;
+        }
+        if (btn.hasAttribute('data-open-help')) {
+          soundEngine.play('click');
+          $('modal-help').classList.remove('hidden');
+          return;
+        }
+        if (btn.hasAttribute('data-open-history')) {
+          soundEngine.play('click');
+          renderHistoryModal();
+          $('modal-history').classList.remove('hidden');
+          return;
+        }
+        if (btn.dataset.closeModal) {
+          soundEngine.play('click');
+          $(btn.dataset.closeModal).classList.add('hidden');
+          return;
+        }
+        if (btn.hasAttribute('data-leave-room')) {
+          leaveRoom();
+          return;
+        }
+        if (btn.dataset.pickAvatar) {
+          soundEngine.play('click');
+          state.avatarId = btn.dataset.pickAvatar;
+          renderHome();
+          return;
+        }
+        if (btn.dataset.kickId) {
+          kickPlayer(btn.dataset.kickId);
+          return;
+        }
+        if (btn.dataset.setMode) {
+          soundEngine.play('click');
+          updateRoomSettings({ mode: btn.dataset.setMode });
+          return;
+        }
+        if (btn.dataset.setDiff) {
+          soundEngine.play('click');
+          updateRoomSettings({ difficulty: btn.dataset.setDiff });
+          return;
+        }
+        if (btn.dataset.reactEmoji) {
+          sendReaction(btn.dataset.reactEmoji);
+          return;
+        }
+        if (btn.dataset.setupDigit) {
+          state.setupDigits = Number(btn.dataset.setupDigit);
+          renderGameArena();
+          return;
+        }
+        if (btn.dataset.setupCat) {
+          state.setupCategory = btn.dataset.setupCat;
+          renderGameArena();
+          return;
+        }
+        if (btn.dataset.pickModec !== undefined) {
+          const choice = (state.room?.currentRound?.wordChoices || [])[Number(btn.dataset.pickModec)];
+          if (choice) {
+            soundEngine.play('click');
+            submitRoundSetup({
+              secret: choice.word,
+              category: choice.category,
+              difficulty: choice.difficulty,
+              bonusPoints: choice.bonus,
+            });
+          }
+          return;
+        }
+        if (btn.dataset.drawColor) {
+          state.drawTool = 'pencil';
+          state.drawColor = btn.dataset.drawColor;
+          renderDrawToolbar();
+          return;
+        }
+        if (btn.dataset.drawSize) {
+          state.drawSize = Number(btn.dataset.drawSize);
+          renderDrawToolbar();
+          return;
+        }
+      });
+    };
+
+    // =========================================================================
+    // 15. BOOTSTRAP ON WINDOW LOAD
+    // =========================================================================
+    window.addEventListener('load', async () => {
+      wireAllEvents();
+      setupCanvasListeners();
+
+      try {
+        state.user = await backend.init();
+        const profile = await backend.getProfile();
+        if (profile) {
+          if (profile.username) state.username = profile.username;
+          if (profile.avatarId) state.avatarId = profile.avatarId;
+          if (profile.audio) {
+            state.audio = { ...state.audio, ...profile.audio };
+            soundEngine.updateSettings(state.audio);
+          }
+          if (profile.activeRoomCode) {
+            const existingRoom = await backend.getDocData('rooms', profile.activeRoomCode);
+            if (existingRoom && existingRoom.players && existingRoom.players[state.user.uid]) {
+              state.reconnectRoomCode = profile.activeRoomCode;
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Startup error:', err);
+        setHomeError('Initialization issue encountered. You can still play in local mode.');
+      }
+
+      renderApp();
+    });
+  </script>
+</body>
+</html>
